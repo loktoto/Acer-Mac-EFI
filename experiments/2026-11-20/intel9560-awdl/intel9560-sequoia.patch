@@ -1,0 +1,2043 @@
+diff --git a/itl80211/openbsd/net80211/ieee80211_var.h b/itl80211/openbsd/net80211/ieee80211_var.h
+index 33ecd81..441fbe9 100644
+--- a/itl80211/openbsd/net80211/ieee80211_var.h
++++ b/itl80211/openbsd/net80211/ieee80211_var.h
+@@ -412,6 +412,12 @@ struct ieee80211_defrag {
+ struct ieee80211com {
+ 	struct arpcom		ic_ac;
+ 	LIST_ENTRY(ieee80211com) ic_list;	/* chain of all ieee80211com */
++	/* Optional observation tap for vendor AWDL management frames. The tap
++	 * borrows bytes from the receive mbuf and must not retain or consume them. */
++	void			(*ic_awdl_rx)(void *, const uint8_t *, size_t,
++				    uint8_t, int8_t, uint32_t);
++	void			*ic_awdl_rx_arg;
++	bool			ic_awdl_rx_filter_programmed;
+ 	void			(*ic_recv_mgmt)(struct ieee80211com *,
+ 				    mbuf_t, struct ieee80211_node *,
+ 				    struct ieee80211_rxinfo *, int);
+@@ -473,6 +479,9 @@ struct ieee80211com {
+ 	u_char			ic_beacon_hint[howmany(IEEE80211_CHAN_MAX, NBBY)];
+ 	u_char			ic_chan_scan[howmany(IEEE80211_CHAN_MAX,NBBY)];
+ 	struct mbuf_queue	ic_mgtq;
++	volatile uint32_t	ic_awdl_tx_dequeued;
++	volatile uint32_t	ic_awdl_tx_submitted;
++	volatile uint32_t	ic_awdl_tx_failed;
+ 	struct mbuf_queue	ic_pwrsaveq;
+ 	u_int8_t		ic_scan_count;	/* count scans */
+ 	u_int32_t		ic_flags;	/* state flags */
+diff --git a/itlwm/hal_iwm/ItlIwm.cpp b/itlwm/hal_iwm/ItlIwm.cpp
+index 485c8d6..37b77cd 100644
+--- a/itlwm/hal_iwm/ItlIwm.cpp
++++ b/itlwm/hal_iwm/ItlIwm.cpp
+@@ -73,6 +73,12 @@ attach(IOPCIDevice *device)
+ {
+     pci.pa_tag = device;
+     pci.workloop = getMainWorkLoop();
++#if defined(AIRPORT_WCL) && __IO80211_TARGET == __MAC_15_2
++    int probeArg = 0;
++    awdl9560Requested = device->configRead32(kIOPCIConfigVendorID) == 0x9DF08086u &&
++        device->configRead32(kIOPCIConfigSubSystemVendorID) == 0x00348086u &&
++        PE_parse_boot_argn("-itl9560awdl", &probeArg, sizeof(probeArg));
++#endif
+ #ifdef AIRPORT_VTD
+     if (!prepareDma(device, 36))
+         return false;
+diff --git a/itlwm/hal_iwm/ItlIwm.hpp b/itlwm/hal_iwm/ItlIwm.hpp
+index f8fc48f..81f53ca 100644
+--- a/itlwm/hal_iwm/ItlIwm.hpp
++++ b/itlwm/hal_iwm/ItlIwm.hpp
+@@ -35,6 +35,12 @@
+ 
+ class ItlIwm : public ItlHalService, ItlDriverInfo, ItlDriverController {
+     OSDeclareDefaultStructors(ItlIwm)
++
++    bool awdl9560Requested = false;
++    uint32_t awdl9560ActionFrames = 0;
++    void start9560AwDLListener();
++    static void count9560AwDLAction(void *, const uint8_t *, size_t,
++                                    uint8_t, int8_t, uint32_t);
+     
+ public:
+     //kext
+@@ -95,6 +101,42 @@ public:
+     virtual const char *getFirmwareCountryCode() override;
+ 
+     virtual uint32_t getTxQueueSize() override;
++
++    // Experimental AWDL multi-channel concurrency.  This programs a second
++    // P2P-device MAC while infrastructure remains on its managed STA MAC.
++    int iwm_awdl_mcc_configure(const uint8_t *, uint16_t, uint32_t *);
++    void iwm_awdl_mcc_teardown(void);
++    bool iwm_awdl_mcc_active(void) const;
++    void iwm_set_awdl_sta_rx(bool enable);
++    void iwm_set_awdl_shared_phy(bool enable);
++    void iwm_set_awdl_force_promisc(bool enable);
++    void iwm_set_awdl_ibss(bool enable);
++    void iwm_set_awdl_bss_sta(bool enable);
++    void iwm_set_awdl_go_knobs(uint32_t tsf, uint32_t btimeSta, uint32_t bsta);
++    void iwm_set_awdl_go_knobs2(uint32_t color, uint32_t noPromisc, uint32_t preMod);
++    void iwm_set_awdl_go_prequota(uint32_t on) { com.sc_awdl_go_prequota = on != 0; }
++    void iwm_set_awdl_slot(uint32_t slot) { com.sc_awdl_slot = (slot >= 1 && slot <= 2) ? slot : 0; }
++    void iwm_set_awdl_go(bool enable);
++    int iwm_awdl_retune(uint16_t channel);
++    void iwm_awdl_retune_stats(uint32_t *out2) const;
++    bool iwm_awdl_channel_usable(uint16_t channel) const;
++    uint32_t iwm_awdl_reg_flags(uint16_t channel) const;
++    bool iwm_awdl_mcc_shared(void) const;
++    void iwm_awdl_shared_stats(uint32_t *out2) const;
++    void iwm_restart_diag(uint32_t *out4) const;
++    void iwm_restart_diag_tables(uint32_t *lmac24, uint32_t *umac15) const;
++    void iwm_note_mac_ctxt_cmd(struct iwm_softc *, uint32_t, uint32_t);
++    void iwm_restart_diag_mac_cmds(uint32_t *out8) const;
++    void iwm_note_sw_error(struct iwm_softc *);
++    void iwm_set_awdl_time_event(bool enable);
++    int iwm_align_awdl_time_event(uint32_t applyTime, uint32_t intervalTu,
++                                  uint32_t durationTu);
++    int iwm_ensure_awdl_time_event(void);
++    void iwm_awdl_q2_stats(uint32_t *out6) const;
++    void iwm_awdl_q2_diag(uint32_t *out22) const;
++    void iwm_awdl_time_event_stats(uint32_t *out7) const;
++    int iwm_awdl_peer_cache_update(const uint8_t *, bool);
++    void iwm_awdl_peer_cache_stats(uint32_t *out5, uint8_t *addresses) const;
+     
+     //driver controller
+     virtual void clearScanningFlags() override;
+@@ -182,6 +224,8 @@ public:
+     int    iwm_enable_ac_txq(struct iwm_softc *, int, int);
+     int    iwm_enable_txq(struct iwm_softc *, int, int, int, int, int, int);
+     int    iwm_disable_txq(struct iwm_softc *, uint8_t, uint8_t, uint8_t);
++    int    iwm_disable_txq_for_sta(struct iwm_softc *, uint8_t, uint8_t,
++                                   uint8_t, uint8_t);
+     int    iwm_enable_default_tx_queues(struct iwm_softc *);
+     int    iwm_disable_tx_queues(struct iwm_softc *);
+     int    iwm_post_alive(struct iwm_softc *);
+@@ -360,6 +404,20 @@ public:
+                                       struct iwm_mac_data_sta *, int);
+     int    iwm_mac_ctxt_cmd(struct iwm_softc *, struct iwm_node *, uint32_t, int);
+     int    iwm_update_quotas(struct iwm_softc *, struct iwm_node *, int);
++    int    iwm_awdl_mcc_mac_cmd(struct iwm_softc *, const uint8_t *, uint32_t);
++    int    iwm_awdl_mcc_binding_cmd(struct iwm_softc *, uint32_t);
++    int    iwm_awdl_mcc_shared_binding_cmd(struct iwm_softc *, bool);
++    int    iwm_awdl_mcc_sta_cmd(struct iwm_softc *, bool);
++    int    iwm_awdl_go_beacon_cmd(struct iwm_softc *, const uint8_t *);
++    int    iwm_awdl_go_mcast_sta(struct iwm_softc *, bool);
++    int    iwm_awdl_go_beacon_result(void) const;
++    void   iwm_awdl_go_beacon_times(uint32_t out[3]) const;
++    bool   iwm_fw_has_api_bit(int bit) const { return isset(com.sc_ucode_api, bit); }
++    bool   iwm_fw_has_capa_bit(int bit) const { return isset(com.sc_enabled_capa, bit); }
++    int    iwm_awdl_peer_sta_cmd(struct iwm_softc *, uint8_t,
++                                 const uint8_t *, bool);
++    int    iwm_awdl_mcc_time_event_cmd(struct iwm_softc *, bool, uint32_t,
++                                       uint32_t, uint32_t, bool);
+     void    iwm_add_task(struct iwm_softc *, struct taskq *, struct task *);
+     void    iwm_del_task(struct iwm_softc *, struct taskq *, struct task *);
+     int    iwm_scan(struct iwm_softc *);
+diff --git a/itlwm/hal_iwm/ctxt.cpp b/itlwm/hal_iwm/ctxt.cpp
+index 06eb41e..b176ebd 100644
+--- a/itlwm/hal_iwm/ctxt.cpp
++++ b/itlwm/hal_iwm/ctxt.cpp
+@@ -140,6 +140,9 @@ iwm_get_channel_width(struct ieee80211com *ic, struct ieee80211_channel *c)
+     if (ic->ic_bss == NULL || ic->ic_state < IEEE80211_S_ASSOC) {
+         return ret;
+     }
++    /* A second PHY must not inherit the infrastructure BSS's channel width. */
++    if (c != ic->ic_bss->ni_chan)
++        return ret;
+     switch (ic->ic_bss->ni_chw) {
+         case IEEE80211_CHAN_WIDTH_20_NOHT:
+         case IEEE80211_CHAN_WIDTH_20:
+@@ -159,7 +162,9 @@ iwm_get_channel_width(struct ieee80211com *ic, struct ieee80211_channel *c)
+ static uint8_t
+ iwm_get_ctrl_pos(struct ieee80211com *ic, struct ieee80211_channel *c)
+ {
+-    if (ic->ic_bss == NULL || ic->ic_state < IEEE80211_S_ASSOC || iwm_get_channel_width(ic, c) == IWM_PHY_VHT_CHANNEL_MODE20)
++    if (ic->ic_bss == NULL || ic->ic_state < IEEE80211_S_ASSOC ||
++        c != ic->ic_bss->ni_chan ||
++        iwm_get_channel_width(ic, c) == IWM_PHY_VHT_CHANNEL_MODE20)
+         return IWM_PHY_VHT_CTRL_POS_1_BELOW;
+     
+     signed int offset = ic->ic_bss->ni_chan->ic_freq - ic->ic_bss->ni_chan->ic_center_freq1;
+diff --git a/itlwm/hal_iwm/fw.cpp b/itlwm/hal_iwm/fw.cpp
+index 141a5a2..e0adf88 100644
+--- a/itlwm/hal_iwm/fw.cpp
++++ b/itlwm/hal_iwm/fw.cpp
+@@ -296,6 +296,9 @@ iwm_read_firmware(struct iwm_softc *sc, enum iwm_ucode_type ucode_type)
+     memset(sc->sc_ucode_api, 0, sizeof(sc->sc_ucode_api));
+     memcpy(sc->sc_fw_mcc, "ZZ", sizeof(sc->sc_fw_mcc));
+     sc->sc_fw_mcc_int = 0x3030;
++    sc->sc_awdl_reg_count = 0;
++    sc->sc_awdl_sf_forced = false;
++    memset(sc->sc_awdl_reg_flags, 0, sizeof(sc->sc_awdl_reg_flags));
+     
+     uhdr = (struct iwm_tlv_ucode_header *)fw->fw_rawdata;
+     if (*(uint32_t *)fw->fw_rawdata != 0
+diff --git a/itlwm/hal_iwm/hw.cpp b/itlwm/hal_iwm/hw.cpp
+index c52adfc..2a5332c 100644
+--- a/itlwm/hal_iwm/hw.cpp
++++ b/itlwm/hal_iwm/hw.cpp
+@@ -657,6 +657,31 @@ iwm_stop_device(struct iwm_softc *sc)
+     XYLog("%s\n", __FUNCTION__);
+     int chnl, ntries;
+     int qid;
++
++    /* Firmware reset destroys the extra AWDL contexts and queue. */
++    if (awdl9560Requested && sc->sc_ic.ic_awdl_rx != nullptr) {
++        sc->sc_ic.ic_awdl_rx = nullptr;
++        sc->sc_ic.ic_awdl_rx_arg = nullptr;
++        if (auto *controller = getController())
++            controller->setProperty("ITL9560AWDLState", "waiting for association");
++    }
++    sc->sc_awdl_mcc_state = 0;
++    sc->sc_awdl_mcc_channel = 0;
++    sc->sc_awdl_te_enabled = 0;
++    sc->sc_awdl_te_pending = 0;
++    sc->sc_awdl_te_uid = 0;
++    sc->sc_awdl_te_active = 0;
++    sc->sc_awdl_te_starts = 0;
++    sc->sc_awdl_te_ends = 0;
++    sc->sc_awdl_te_last_status = 0;
++    sc->sc_awdl_te_last_timestamp = 0;
++    memset(sc->sc_awdl_mcc_macaddr, 0, sizeof(sc->sc_awdl_mcc_macaddr));
++    memset(sc->sc_awdl_peer_active, 0, sizeof(sc->sc_awdl_peer_active));
++    memset(sc->sc_awdl_peer_addr, 0, sizeof(sc->sc_awdl_peer_addr));
++    sc->sc_awdl_peer_adds = 0;
++    sc->sc_awdl_peer_deletes = 0;
++    sc->sc_awdl_peer_failures = 0;
++    sc->sc_awdl_peer_last_error = 0;
+     
+     iwm_disable_interrupts(sc);
+     sc->sc_flags &= ~IWM_FLAG_USE_ICT;
+diff --git a/itlwm/hal_iwm/if_iwmvar.h b/itlwm/hal_iwm/if_iwmvar.h
+index bf6e291..d57ad32 100644
+--- a/itlwm/hal_iwm/if_iwmvar.h
++++ b/itlwm/hal_iwm/if_iwmvar.h
+@@ -596,6 +596,10 @@ struct iwm_softc {
+     int n_cmd_versions;
+ 	char sc_fw_mcc[3];
+     uint16_t sc_fw_mcc_int;
++    /* Read-only current firmware regulatory profile, indexed by channel. */
++    uint16_t sc_awdl_reg_flags[IEEE80211_CHAN_MAX + 1];
++    uint32_t sc_awdl_reg_count;
++    bool sc_awdl_sf_forced;
+ 
+ 	int sc_intmask;
+ 	int sc_flags;
+@@ -659,8 +663,86 @@ struct iwm_softc {
+ 
+ 	uint32_t sc_time_event_uid;
+ 
+-	/* phy contexts.  we only use the first one */
++	/* PHY 0 is infrastructure; PHY 1 may be bound to the experimental AWDL MAC. */
+ 	struct iwm_phy_ctxt sc_phyctxt[IWM_NUM_PHY_CTX];
++	uint32_t sc_awdl_mcc_state;
++	/* itlwm_awdl_sta_rx=1: management/group (never promiscuous) AWDL RX on the station context. */
++	uint32_t sc_awdl_sta_rx;
++	/* itlwm_awdl_shared_phy=1: bind the AWDL MAC into the station's PHY
++	 * context when both use the same primary channel, instead of PHY 1. */
++	uint32_t sc_awdl_shared_phy;
++	uint32_t sc_awdl_force_promisc;
++	uint32_t sc_awdl_ibss;
++	uint32_t sc_awdl_bss_sta;
++	uint32_t sc_awdl_go;
++	uint32_t sc_awdl_go_mcast_active;
++	/* GO/IBSS bring-up experiment knobs (boot arguments). */
++	uint32_t sc_awdl_go_tsf;		/* TSF id for the AWDL MAC */
++	uint32_t sc_awdl_go_btime_sta;	/* beacon_time from the station TBTT */
++	uint32_t sc_awdl_bsta_id;	/* broadcast/general-purpose station id */
++	uint32_t sc_awdl_color;		/* AWDL MAC colour (iwlwifi varies it) */
++	uint32_t sc_awdl_slot;		/* AWDL MAC/PHY index, 0 = default 1 */
++	uint32_t sc_awdl_go_nopromisc;	/* no PROMISC on a GO/IBSS MAC */
++	uint32_t sc_awdl_go_premod;	/* MAC modify after binding */
++	uint32_t sc_awdl_go_prequota;	/* quota for the GO binding before stations */
++	uint32_t sc_awdl_go_beacon_time;
++	uint32_t sc_awdl_go_gp2_time;
++	uint32_t sc_awdl_go_sta_rstamp;
++	int sc_awdl_go_beacon_err;
++	uint32_t sc_awdl_retunes;
++	uint32_t sc_awdl_retune_errors;
++	uint32_t sc_awdl_mcc_shared;
++	uint32_t sc_awdl_shared_binds;
++	uint32_t sc_awdl_shared_evictions;
++	/* Always-on restart diagnostics: the Release build compiles out the
++	 * firmware error dump, and dmesg keeps only minutes of history. */
++	uint32_t sc_diag_sw_errors;
++	uint32_t sc_diag_last_error_id;
++	uint32_t sc_diag_tx_timeouts;
++	uint32_t sc_diag_tx_timeout_qmask;
++	/* Raw copies of the first LMAC and the UMAC error tables at the last
++	 * SW error (layouts: iwm_error_event_table / iwm_umac_error_event_table). */
++	uint32_t sc_diag_lmac_table[24];
++	uint32_t sc_diag_umac_table[15];
++	uint32_t sc_diag_mac_cmd_seq;
++	uint32_t sc_diag_mac_cmd_ring[8];
++	/* MAC_CONTEXT_CMD ring snapshot taken at the last SW error. */
++	uint32_t sc_diag_mac_cmd_at_error[8];
++	/* Telemetry for AWDL DQA queue 2 (IWM_DQA_P2P_DEVICE_QUEUE). */
++	uint32_t sc_awdl_q2_submitted;
++	uint32_t sc_awdl_q2_resp;
++	uint32_t sc_awdl_q2_ok;
++	uint32_t sc_awdl_q2_fail;
++	uint32_t sc_awdl_q2_last_status;
++	uint32_t sc_awdl_q2_last_retries;
++	/* Read-only queue-2 failure diagnostics (why and when frames fail). */
++	uint32_t sc_awdl_q2_fail_status[17];	/* 0x80..0x8f, [16] other */
++	uint32_t sc_awdl_q2_uc_ok;
++	uint32_t sc_awdl_q2_uc_fail;
++	uint32_t sc_awdl_q2_fail_te_off;	/* AWDL time event not active */
++	uint32_t sc_awdl_q2_ok_te_off;
++	uint32_t sc_awdl_q2_fail_near_tecmd;	/* within 150 ms of a TE command */
++	uint64_t sc_awdl_te_cmd_ns;
++	/* Legacy TIME_EVENT_CMD proof for the unassociated AWDL MAC context. */
++	uint32_t sc_awdl_te_enabled;
++	uint32_t sc_awdl_te_pending;
++	uint32_t sc_awdl_te_uid;
++	uint32_t sc_awdl_te_active;
++	uint32_t sc_awdl_te_starts;
++	uint32_t sc_awdl_te_ends;
++	uint32_t sc_awdl_te_last_status;
++	uint32_t sc_awdl_te_last_timestamp;
++	uint16_t sc_awdl_mcc_channel;
++	uint8_t sc_awdl_mcc_macaddr[ETHER_ADDR_LEN];
++	/* Firmware station-table entries used only to admit unicast AWDL RX.
++	 * Station 3 remains the broadcast/TX entry and owns DQA queue 2. */
++#define IWM_AWDL_PEER_MAX 4
++	uint8_t sc_awdl_peer_active[IWM_AWDL_PEER_MAX];
++	uint8_t sc_awdl_peer_addr[IWM_AWDL_PEER_MAX][ETHER_ADDR_LEN];
++	uint32_t sc_awdl_peer_adds;
++	uint32_t sc_awdl_peer_deletes;
++	uint32_t sc_awdl_peer_failures;
++	int32_t sc_awdl_peer_last_error;
+ 
+ 	struct iwm_notif_statistics sc_stats;
+ 	int sc_noise;
+@@ -726,6 +808,37 @@ struct iwm_node {
+ #define IWM_STATION_ID 0
+ #define IWM_AUX_STA_ID 1
+ #define IWM_MONITOR_STA_ID 2
++#define IWM_AWDL_STA_ID 3
++#define IWM_AWDL_PEER_STA_BASE (IWM_AWDL_STA_ID + 1)
++/* GO multicast station (iwlwifi iwl_mvm_add_mcast_sta). Linux allocates the
++ * broadcast station first (ID 2 after STA 0 and AUX 1), then multicast (ID
++ * 3), even though start_ap_ibss sends multicast to firmware before broadcast
++ * when STA_TYPE is supported. Firmware 46 asserted with the reverse ID
++ * assignment and with the former hard-coded multicast ID 8. */
++#define IWM_AWDL_MCAST_STA_ID IWM_AWDL_STA_ID
++/* AWDL TX/broadcast-station queue: AP/GO use the probe-response queue (iwlwifi
++ * probe_queue); only a P2P_DEVICE MAC may use queue 2 (p2p_dev_queue). */
++#define IWM_AWDL_BSTA(sc) ((sc)->sc_awdl_bsta_id != 0 ? (sc)->sc_awdl_bsta_id : IWM_AWDL_STA_ID)
++#define IWM_AWDL_MACID(sc) IWM_FW_CMD_ID_AND_COLOR(IWM_AWDL_MAC_INDEX, (sc)->sc_awdl_color)
++#define IWM_AWDL_TXQ(sc) (((sc)->sc_awdl_go || (sc)->sc_awdl_ibss) ? \
++    IWM_DQA_AP_PROBE_RESP_QUEUE : IWM_DQA_P2P_DEVICE_QUEUE)
++/* AP/GO/IBSS MAC contexts need a beacon template and broadcast/multicast
++ * internal stations (iwlwifi iwl_mvm_start_ap_ibss). */
++#define IWM_AWDL_BEACONING(sc) ((sc)->sc_awdl_go || (sc)->sc_awdl_ibss)
++/* AWDL MAC/PHY/binding slot. Runtime-selectable (itlwm_awdl_slot) so a GO
++ * can be tried away from slot 1; a zeroed softc means the historic slot 1.
++ * Every use site has `sc` in scope. */
++#define IWM_AWDL_SLOT(sc) ((sc)->sc_awdl_slot != 0 ? (sc)->sc_awdl_slot : 1U)
++#define IWM_AWDL_MAC_INDEX IWM_AWDL_SLOT(sc)
++#define IWM_AWDL_PHY_INDEX IWM_AWDL_SLOT(sc)
++
++#define IWM_AWDL_MCC_MAC_ACTIVE      (1U << 0)
++#define IWM_AWDL_MCC_BINDING_ACTIVE  (1U << 1)
++#define IWM_AWDL_MCC_QUEUE_ACTIVE    (1U << 2)
++#define IWM_AWDL_MCC_STA_ACTIVE      (1U << 3)
++#define IWM_AWDL_MCC_ACTIVE (IWM_AWDL_MCC_MAC_ACTIVE | \
++    IWM_AWDL_MCC_BINDING_ACTIVE | IWM_AWDL_MCC_QUEUE_ACTIVE | \
++    IWM_AWDL_MCC_STA_ACTIVE)
+ 
+ #define IWM_ICT_SIZE        4096
+ #define IWM_ICT_COUNT        (IWM_ICT_SIZE / sizeof (uint32_t))
+diff --git a/itlwm/hal_iwm/mac80211.cpp b/itlwm/hal_iwm/mac80211.cpp
+index 698ab17..65a05ce 100644
+--- a/itlwm/hal_iwm/mac80211.cpp
++++ b/itlwm/hal_iwm/mac80211.cpp
+@@ -124,6 +124,7 @@
+ #include <IOKit/IOCommandGate.h>
+ #include <net80211/ieee80211_priv.h>
+ #include "rs.h"
++#include "AWDLFrameParser.hpp"
+ 
+ #ifdef IWM_DEBUG
+ int iwm_debug = 1;
+@@ -999,6 +1000,14 @@ iwm_rx_frame(struct iwm_softc *sc, mbuf_t m, int chanidx,
+                      m, BPF_DIRECTION_IN);
+     }
+ #endif
++    if (ic->ic_awdl_rx != NULL && mbuf_len(m) >= 24) {
++        ic->ic_awdl_rx(ic->ic_awdl_rx_arg,
++                       static_cast<const uint8_t *>(mbuf_data(m)),
++                       mbuf_len(m),
++                       static_cast<uint8_t>(ieee80211_chan2ieee(ic, &ic->ic_channels[chanidx])),
++                       static_cast<int8_t>(rxi->rxi_rssi),
++                       device_timestamp);
++    }
+     ieee80211_inputm(IC2IFP(ic), m, ni, rxi, ml);
+     ieee80211_release_node(ic, ni);
+ }
+@@ -1027,6 +1036,14 @@ static const char *iwm_get_agg_tx_status(u16 status)
+ 
+ #define IEEE80211_TX_MAX_RATES    4
+ 
++static bool
++iwm_is_awdl_frame(const struct ieee80211_frame *wh)
++{
++    static const uint8_t awdlBssid[ETHER_ADDR_LEN] =
++        { 0x00, 0x25, 0x00, 0xff, 0x94, 0x73 };
++    return memcmp(wh->i_addr3, awdlBssid, sizeof(awdlBssid)) == 0;
++}
++
+ static int ieee80211_tx_get_rates(struct iwm_softc *sc,
+                   struct ieee80211_tx_info *info,
+                   int *retry_count)
+@@ -1115,7 +1132,10 @@ iwm_ampdu_txq_advance(struct iwm_softc *sc, struct iwm_tx_ring *ring, int idx)
+             if (ring->qid < IWM_FIRST_AGG_TX_QUEUE)
+                 DPRINTF(("%s: missed Tx completion: tail=%d "
+                          "idx=%d\n", __func__, ring->tail, idx));
+-            iwm_reset_sched(sc, ring->qid, ring->tail, IWM_STATION_ID);
++            iwm_reset_sched(sc, ring->qid, ring->tail,
++                sc->sc_ic.ic_opmode == IEEE80211_M_STA &&
++                ring->qid == IWM_AWDL_TXQ(sc) ?
++                IWM_AWDL_BSTA(sc) : IWM_STATION_ID);
+             iwm_txd_done(sc, txd);
+             ring->queued--;
+         }
+@@ -1427,7 +1447,10 @@ iwm_rx_tx_cmd_single(struct iwm_softc *sc, struct iwm_tx_resp *tx_resp,
+ 
+             ieee80211_tx_status(sc, info, tid, txd->fc, ssn);
+ 
+-            iwm_reset_sched(sc, ring->qid, ring->tail, IWM_STATION_ID);
++            iwm_reset_sched(sc, ring->qid, ring->tail,
++                sc->sc_ic.ic_opmode == IEEE80211_M_STA &&
++                ring->qid == IWM_AWDL_TXQ(sc) ?
++                IWM_AWDL_BSTA(sc) : IWM_STATION_ID);
+             iwm_txd_done(sc, txd);
+             ring->queued--;
+         }
+@@ -1527,6 +1550,52 @@ iwm_rx_tx_cmd(struct iwm_softc *sc, struct iwm_rx_packet *pkt,
+     
+     ring = &sc->txq[qid];
+     txd = &ring->data[idx];
++
++    if (qid == IWM_AWDL_TXQ(sc) && tx_resp->frame_count == 1) {
++        const uint32_t st = le16toh(iwl_mvm_get_agg_status(sc, tx_resp)->status);
++        const uint32_t n = ++sc->sc_awdl_q2_resp;
++        sc->sc_awdl_q2_last_status = st;
++        sc->sc_awdl_q2_last_retries = tx_resp->failure_frame;
++        const bool q2ok = (st & IWM_TX_STATUS_MSK) == IWM_TX_STATUS_SUCCESS ||
++            (st & IWM_TX_STATUS_MSK) == IWM_TX_STATUS_DIRECT_DONE;
++        if (q2ok)
++            sc->sc_awdl_q2_ok++;
++        else
++            sc->sc_awdl_q2_fail++;
++        // Read-only diagnostics: failure reason, unicast vs multicast,
++        // and whether the AWDL window was off or a TE command was recent.
++        bool q2unicast = false;
++        if (txd->m != NULL && mbuf_len(txd->m) >= sizeof(struct ieee80211_frame_min)) {
++            const struct ieee80211_frame_min *q2wh =
++                mtod(txd->m, const struct ieee80211_frame_min *);
++            q2unicast = (q2wh->i_addr1[0] & 1) == 0;
++        }
++        const bool teOff = sc->sc_awdl_te_active == 0;
++        if (q2ok) {
++            if (q2unicast)
++                sc->sc_awdl_q2_uc_ok++;
++            if (teOff)
++                sc->sc_awdl_q2_ok_te_off++;
++        } else {
++            const uint32_t code = st & IWM_TX_STATUS_MSK;
++            sc->sc_awdl_q2_fail_status[(code >= 0x80 && code <= 0x8f) ?
++                                       code - 0x80 : 16]++;
++            if (q2unicast)
++                sc->sc_awdl_q2_uc_fail++;
++            if (teOff)
++                sc->sc_awdl_q2_fail_te_off++;
++            uint64_t q2abs = 0, q2ns = 0;
++            clock_get_uptime(&q2abs);
++            absolutetime_to_nanoseconds(q2abs, &q2ns);
++            if (sc->sc_awdl_te_cmd_ns != 0 && q2ns >= sc->sc_awdl_te_cmd_ns &&
++                q2ns - sc->sc_awdl_te_cmd_ns < 150ULL * 1000000ULL)
++                sc->sc_awdl_q2_fail_near_tecmd++;
++        }
++        if (n <= 16)
++            IOLog("itlwm: AWDL_Q2_TX_RESP n=%u status=0x%x retries=%u rate=0x%x len=%u" "\n",
++                  n, st, tx_resp->failure_frame, le32toh(tx_resp->initial_rate),
++                  le16toh(tx_resp->byte_cnt));
++    }
+     
+     if (tx_resp->frame_count > 1) {
+         for (int i = 0; i < tx_resp->frame_count; i++) {
+@@ -1583,6 +1652,13 @@ iwm_rx_bmiss(struct iwm_softc *sc, struct iwm_rx_packet *pkt,
+     //            sizeof(*mbn), BUS_DMASYNC_POSTREAD);
+     
+     missed = le32toh(mbn->consec_missed_beacons_since_last_rx);
++    if (sc->sc_flags & IWM_FLAG_BGSCAN) {
++        if (ic->ic_if.if_flags & IFF_DEBUG)
++            XYLog("%s: ignoring %u missed beacons during background scan\n",
++                  DEVNAME(sc), missed);
++        return;
++    }
++
+     if (missed > ic->ic_bmissthres && ic->ic_mgt_timer == 0) {
+         if (ic->ic_if.if_flags & IFF_DEBUG)
+             XYLog("%s: receiving no beacons from %s; checking if "
+@@ -1643,9 +1719,14 @@ iwm_tx_fill_cmd(struct iwm_softc *sc, struct iwm_node *in,
+     else
+         tx->data_retry_limit = IWM_DEFAULT_TX_RETRY;
+     
+-    if (IEEE80211_IS_MULTICAST(wh->i_addr1) ||
++    const bool awdl = iwm_is_awdl_frame(wh);
++    if (awdl) {
++        /* AWDL is always on an OFDM social channel in this transport. */
++        ridx = IWL_FIRST_OFDM_RATE;
++        tx->data_retry_limit = IWM_MGMT_DFAULT_RETRY_LIMIT;
++    } else if (IEEE80211_IS_MULTICAST(wh->i_addr1) ||
+         type != IEEE80211_FC0_TYPE_DATA) {
+-        /* for non-data, use the lowest supported rate */
++        /* non-data frames use the lowest supported infrastructure rate */
+         ridx = min_ridx;
+         tx->data_retry_limit = IWM_MGMT_DFAULT_RETRY_LIMIT;
+     } else if (ic->ic_fixed_mcs != -1) {
+@@ -1704,6 +1785,8 @@ iwm_tx(struct iwm_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac)
+     uint16_t len, tb1_len;
+     
+     wh = mtod(m, struct ieee80211_frame *);
++    const bool awdl = mbuf_len(m) >= sizeof(*wh) && iwm_is_awdl_frame(wh) &&
++        sc->sc_awdl_mcc_state == IWM_AWDL_MCC_ACTIVE;
+     type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
+     subtype = wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK;
+ #ifdef AIRPORT_WCL
+@@ -1730,12 +1813,14 @@ iwm_tx(struct iwm_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac)
+      * client mode; the firmware's station table contains only one entry
+      * which represents our access point.
+      */
+-    if (isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT))
++    if (awdl)
++        qid = IWM_AWDL_TXQ(sc);
++    else if (isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT))
+         qid = IWM_DQA_MIN_MGMT_QUEUE + ac;
+     else
+         qid = ac;
+     
+-    if (hasqos) {
++    if (hasqos && !awdl) {
+         struct ieee80211_tx_ba *ba;
+         uint16_t qos = ieee80211_get_qos(wh);
+         int qostid = qos & IEEE80211_QOS_TID;
+@@ -1849,7 +1934,9 @@ iwm_tx(struct iwm_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac)
+         flags |= (IWM_TX_CMD_FLG_ACK | IWM_TX_CMD_FLG_BAR);
+     }
+     
+-    tx->sta_id = IWM_STATION_ID;
++    tx->sta_id = awdl ? IWM_AWDL_BSTA(sc) : IWM_STATION_ID;
++    if (awdl)
++        sc->sc_awdl_q2_submitted++;
+     
+     if (type == IEEE80211_FC0_TYPE_MGT) {
+         if (subtype == IEEE80211_FC0_SUBTYPE_ASSOC_REQ ||
+@@ -2017,7 +2104,7 @@ iwm_update_sched(struct iwm_softc *sc, int qid, int cur, uint8_t sta_id, uint16_
+     }
+ 
+     len = howmany(len, 4);
+-    bc_ent = htole16(len | (IWM_STATION_ID << 12));
++    bc_ent = htole16(len | (sta_id << 12));
+     scd_bc_tbl[qid].tfd_offset[cur] = bc_ent;
+     if (cur < IWM_TFD_QUEUE_SIZE_BC_DUP) {
+         scd_bc_tbl[qid].tfd_offset[IWM_TFD_QUEUE_SIZE_MAX + cur] = bc_ent;
+@@ -2222,10 +2309,1113 @@ iwm_mac_ctxt_cmd(struct iwm_softc *sc, struct iwm_node *in, uint32_t action,
+         cmd.filter_flags |= htole32(IWM_MAC_FILTER_IN_BEACON);
+     else
+         iwm_mac_ctxt_cmd_fill_sta(sc, in, &cmd.sta, assoc);
+-    
++
++    /*
++     * Opt-in (itlwm_awdl_sta_rx=1): let AWDL action frames, which carry
++     * Apple's AWDL BSSID, reach the host on the station context. Never set
++     * IWM_MAC_FILTER_IN_PROMISC here: promiscuous reception on the station
++     * context caused beacon loss and UMAC asserts (2026-09-25 A/B).
++     */
++    if (sc->sc_awdl_sta_rx && ic->ic_opmode != IEEE80211_M_MONITOR)
++        cmd.filter_flags |= htole32(IWM_MAC_FILTER_IN_CONTROL_AND_MGMT |
++                                    IWM_MAC_FILTER_ACCEPT_GRP);
++
++    // Never broaden the infrastructure station context for AWDL. Doing so
++    // causes scan-time beacon loss and UMAC asserts on Intel CNVi hardware.
++    // The dedicated MCC MAC below owns AWDL management/data reception.
++    iwm_note_mac_ctxt_cmd(sc, in->in_id, action);
+     return iwm_send_cmd_pdu(sc, IWM_MAC_CONTEXT_CMD, 0, sizeof(cmd), &cmd);
+ }
+ 
++int ItlIwm::
++iwm_awdl_mcc_mac_cmd(struct iwm_softc *sc, const uint8_t *address,
++                     uint32_t action)
++{
++    struct ieee80211com *ic = &sc->sc_ic;
++    struct iwm_mac_ctx_cmd cmd;
++    int i;
++
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.id_and_color = htole32(IWM_AWDL_MACID(sc));
++    cmd.action = htole32(action);
++    // Match iwlwifi's P2P-device model.  A BSS_STA MAC expects link stations
++    // and association state; adding such stations to our unassociated AWDL
++    // context caused firmware error 0x2073.  P2P_DEVICE instead uses the
++    // single internal broadcast/general-purpose station on queue 2 below.
++    cmd.mac_type = htole32(IWM_FW_MAC_TYPE_P2P_DEVICE);
++    // iwlwifi: a GO shares the associated station's TSF (station leads,
++    // GO follows) to keep TBTTs apart; itlwm_awdl_go_tsf selects it.
++    cmd.tsf_id = htole32(IWM_AWDL_BEACONING(sc) ? sc->sc_awdl_go_tsf :
++                         IWM_TSF_ID_B);
++    IEEE80211_ADDR_COPY(cmd.node_addr, address);
++    IEEE80211_ADDR_COPY(cmd.bssid_addr, etherbroadcastaddr);
++    // itlwm_awdl_ibss=1: P2P_DEVICE passes a peer's unicast management
++    // frames but not its data. AWDL behaves like an IBSS on BSSID
++    // 00:25:00:ff:94:73, and IBSS data from peers without a station entry
++    // is delivered to the host (mac80211 ibss_rx_no_sta). Fields follow
++    // iwlwifi's iwl_mvm_mac_ctxt_cmd_ibss(); no beacon template is ever
++    // sent, so the firmware has nothing to beacon.
++    // itlwm_awdl_go=1: a P2P GO MAC. STA+GO is a supported firmware
++    // combination and a GO holds per-client LINK stations (added from
++    // IO80211's PEER_CACHE_CONTROL). Fields follow iwlwifi's
++    // iwl_mvm_mac_ctxt_cmd_go(); no beacon template is sent.
++    if (sc->sc_awdl_go) {
++        static const uint8_t awdlBssid[ETHER_ADDR_LEN] =
++            { 0x00, 0x25, 0x00, 0xff, 0x94, 0x73 };
++        cmd.mac_type = htole32(IWM_FW_MAC_TYPE_GO);
++        // An AP/GO BSSID is its own address (iwlwifi: vif->bss_conf.bssid).
++        // With the AWDL BSSID here, adding the broadcast station asserted
++        // 0x3438 (data1 = station 3). AWDL frames still carry 00:25:00:ff:94:73
++        // in addr3 themselves, and PROMISC delivers peer frames.
++        (void)awdlBssid;
++        IEEE80211_ADDR_COPY(cmd.bssid_addr, address);
++        cmd.go.ap.bi = htole32(100);
++        cmd.go.ap.bi_reciprocal = htole32(0xffffffffU / 100U);
++        cmd.go.ap.dtim_interval = htole32(100);
++        cmd.go.ap.dtim_reciprocal = htole32(0xffffffffU / 100U);
++        // iwlwifi fill_ap: mcast_qid is the CAB queue, and only for firmware
++        // without station-type API (otherwise the multicast station owns it).
++        if (!isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE))
++            cmd.go.ap.mcast_qid = htole32(IWM_DQA_GCAST_QUEUE);
++        // Beacon time: device time when added (the 2026-09-27 GO sent 0).
++        cmd.go.ap.beacon_time = htole32(sc->sc_awdl_go_beacon_time);
++        cmd.go.ap.beacon_tsf = 0;
++        cmd.go.ap.beacon_template = htole32(IWM_AWDL_MAC_INDEX);
++    }
++    // itlwm_awdl_bss_sta=1: the pre-2026-09-27 AWDL MAC role. Firmware ACKs
++    // a peer's unicast to node_addr in BSS_STA (P2P_DEVICE is a discovery
++    // role and never ACKs data, so the iPhone saw every frame as lost). On
++    // the separate PHY, PROMISC still delivers the frames to the host. No
++    // per-peer ADD_STA is ever issued (that asserted 0x2073 on this MAC).
++    if (sc->sc_awdl_bss_sta && !sc->sc_awdl_go && !sc->sc_awdl_ibss) {
++        static const uint8_t awdlBssid[ETHER_ADDR_LEN] =
++            { 0x00, 0x25, 0x00, 0xff, 0x94, 0x73 };
++        cmd.mac_type = htole32(IWM_FW_MAC_TYPE_BSS_STA);
++        IEEE80211_ADDR_COPY(cmd.bssid_addr, awdlBssid);
++    }
++    if (sc->sc_awdl_ibss) {
++        static const uint8_t awdlBssid[ETHER_ADDR_LEN] =
++            { 0x00, 0x25, 0x00, 0xff, 0x94, 0x73 };
++        cmd.mac_type = htole32(IWM_FW_MAC_TYPE_IBSS);
++        IEEE80211_ADDR_COPY(cmd.bssid_addr, awdlBssid);
++        cmd.ibss.bi = htole32(100);
++        cmd.ibss.bi_reciprocal = htole32(0xffffffffU / 100U);
++        cmd.ibss.beacon_template = htole32(IWM_AWDL_MAC_INDEX);
++    }
++    /* 6, 12 and 24 Mbps are the mandatory 5 GHz basic rates. */
++    cmd.ofdm_rates = htole32(0x15);
++    cmd.filter_flags = htole32(IWM_MAC_FILTER_IN_CONTROL_AND_MGMT |
++        IWM_MAC_FILTER_ACCEPT_GRP |
++        IWM_MAC_FILTER_IN_BEACON |
++        IWM_MAC_FILTER_IN_PROBE_REQUEST);
++    // Promiscuous RX inside the station's binding is the known UMAC-assert
++    // trigger (see iwm_mac_ctxt_cmd). In a shared binding the AWDL MAC gets
++    // frames for its own address and group frames without it.
++    // itlwm_awdl_promisc=1 re-tests it on the P2P_DEVICE MAC: that role
++    // passes the peer's unicast management frames but not its data frames.
++    // iwlwifi never sets PROMISC on an AP/GO/IBSS MAC; itlwm_awdl_go_nopromisc
++    // tests whether it is why the GO broadcast station asserts 0x3438.
++    if ((!sc->sc_awdl_mcc_shared || sc->sc_awdl_force_promisc) &&
++        !(IWM_AWDL_BEACONING(sc) && sc->sc_awdl_go_nopromisc))
++        cmd.filter_flags |= htole32(IWM_MAC_FILTER_IN_PROMISC);
++
++    for (i = 0; i < EDCA_NUM_AC; i++) {
++        struct ieee80211_edca_ac_params *ac = &ic->ic_edca_ac[i];
++        const uint8_t ucode_ac = iwm_mvm_mac80211_ac_to_ucode_ac(
++            (enum ieee80211_edca_ac)i);
++        cmd.ac[ucode_ac].cw_min = htole16((1U << ac->ac_ecwmin) - 1U);
++        cmd.ac[ucode_ac].cw_max = htole16((1U << ac->ac_ecwmax) - 1U);
++        cmd.ac[ucode_ac].aifsn = ac->ac_aifsn;
++        cmd.ac[ucode_ac].fifos_mask = (1U << iwm_ac_to_tx_fifo[i]);
++        cmd.ac[ucode_ac].edca_txop = htole16(ac->ac_txoplimit * 32);
++    }
++    // AP/GO: the MCAST FIFO takes its EDCA parameters from VO (iwlwifi).
++    if (sc->sc_awdl_go)
++        cmd.ac[iwm_mvm_mac80211_ac_to_ucode_ac(EDCA_AC_VO)].fifos_mask |=
++            (1U << IWM_TX_FIFO_MCAST);
++    cmd.qos_flags = htole32(IWM_MAC_QOS_FLG_UPDATE_EDCA);
++
++    iwm_note_mac_ctxt_cmd(sc, IWM_AWDL_MAC_INDEX, action);
++    const int err = iwm_send_cmd_pdu(sc, IWM_MAC_CONTEXT_CMD, 0,
++                                     sizeof(cmd), &cmd);
++    if (err == 0) {
++        if (action == IWM_FW_CTXT_ACTION_ADD) {
++            ic->ic_awdl_rx_filter_programmed = true;
++            IOLog("itlwm: AWDL_MCC_RX_FILTER_V1 enabled flags=0x%x\n",
++                  letoh32(cmd.filter_flags));
++        } else if (action == IWM_FW_CTXT_ACTION_REMOVE) {
++            ic->ic_awdl_rx_filter_programmed = false;
++        }
++    }
++    return err;
++}
++
++int ItlIwm::
++iwm_awdl_mcc_binding_cmd(struct iwm_softc *sc, uint32_t action)
++{
++    struct iwm_binding_cmd cmd;
++    struct iwm_phy_ctxt *phyctxt = &sc->sc_phyctxt[IWM_AWDL_PHY_INDEX];
++    uint32_t status = 0;
++    size_t len;
++    int i, err;
++
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.id_and_color = htole32(IWM_FW_CMD_ID_AND_COLOR(phyctxt->id,
++                                                        phyctxt->color));
++    cmd.action = htole32(action);
++    cmd.phy = htole32(IWM_FW_CMD_ID_AND_COLOR(phyctxt->id, phyctxt->color));
++    cmd.macs[0] = htole32(IWM_AWDL_MACID(sc));
++    for (i = 1; i < IWM_MAX_MACS_IN_BINDING; i++)
++        cmd.macs[i] = htole32(IWM_FW_CTXT_INVALID);
++    cmd.lmac_id = htole32(IWM_LMAC_5G_INDEX);
++
++    len = isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_BINDING_CDB_SUPPORT) ?
++        sizeof(cmd) : sizeof(struct iwm_binding_cmd_v1);
++    err = iwm_send_cmd_pdu_status(sc, IWM_BINDING_CONTEXT_CMD, len, &cmd,
++                                  &status);
++    if (err == 0 && status != 0)
++        err = EIO;
++    return err;
++}
++
++// With the AWDL MAC on the station's own channel, a second PHY context makes
++// the firmware time-share two bindings on one primary channel: about a third
++// of the AWDL events were skipped for station beacons. Like iwlwifi with a P2P
++// vif on the BSS channel, put both MACs in the station's binding instead.
++int ItlIwm::
++iwm_awdl_mcc_shared_binding_cmd(struct iwm_softc *sc, bool withAwdl)
++{
++    struct ieee80211com *ic = &sc->sc_ic;
++    struct iwm_node *in = (struct iwm_node *)ic->ic_bss;
++    struct iwm_phy_ctxt *phyctxt = in != NULL ? in->in_phyctxt : NULL;
++    struct iwm_binding_cmd cmd;
++    uint32_t status = 0;
++    size_t len;
++    int i, err;
++
++    if (phyctxt == NULL || phyctxt->channel == NULL ||
++        (sc->sc_flags & IWM_FLAG_BINDING_ACTIVE) == 0)
++        return EINVAL;
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.id_and_color = htole32(IWM_FW_CMD_ID_AND_COLOR(phyctxt->id,
++                                                        phyctxt->color));
++    cmd.action = htole32(IWM_FW_CTXT_ACTION_MODIFY);
++    cmd.phy = htole32(IWM_FW_CMD_ID_AND_COLOR(phyctxt->id, phyctxt->color));
++    cmd.macs[0] = htole32(IWM_FW_CMD_ID_AND_COLOR(in->in_id, in->in_color));
++    for (i = 1; i < IWM_MAX_MACS_IN_BINDING; i++)
++        cmd.macs[i] = htole32(IWM_FW_CTXT_INVALID);
++    if (withAwdl)
++        cmd.macs[1] = htole32(IWM_AWDL_MACID(sc));
++    if (IEEE80211_IS_CHAN_2GHZ(phyctxt->channel) ||
++        !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_CDB_SUPPORT))
++        cmd.lmac_id = htole32(IWM_LMAC_24G_INDEX);
++    else
++        cmd.lmac_id = htole32(IWM_LMAC_5G_INDEX);
++    len = isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_BINDING_CDB_SUPPORT) ?
++        sizeof(cmd) : sizeof(struct iwm_binding_cmd_v1);
++    err = iwm_send_cmd_pdu_status(sc, IWM_BINDING_CONTEXT_CMD, len, &cmd,
++                                  &status);
++    if (err == 0 && status != 0)
++        err = EIO;
++    if (err == 0 && withAwdl)
++        ++sc->sc_awdl_shared_binds;
++    IOLog("itlwm: AWDL_SHARED_PHY_V1 binding phy=%u macs=%u%s err=%d\n",
++          phyctxt->id, in->in_id, withAwdl ? "+awdl" : "", err);
++    return err;
++}
++
++// BEACON_TEMPLATE_CMD for the AWDL GO MAC (iwlwifi send_beacon_v6/v7). Pre-
++// 22000 firmware (this 9560) needs the template before the MAC is added.
++// Minimal beacon: hidden SSID, 5 GHz OFDM rates, TIM; broadcast station 3.
++int ItlIwm::
++iwm_awdl_go_beacon_cmd(struct iwm_softc *sc, const uint8_t *address)
++{
++    static const uint8_t awdlBssid[ETHER_ADDR_LEN] =
++        { 0x00, 0x25, 0x00, 0xff, 0x94, 0x73 };
++    static const uint8_t ies[] = {
++        0x00, 0x00,                                     /* SSID (hidden) */
++        0x01, 0x08, 0x8c, 0x12, 0x98, 0x24, 0xb0, 0x48, 0x60, 0x6c,
++        0x05, 0x04, 0x00, 0x01, 0x00, 0x00,             /* TIM */
++    };
++    const size_t timIdx = 24 + 12 + 2 + 10;
++    const uint16_t bi = 100;
++    const bool v9 = isset(sc->sc_ucode_api, 34);    /* NEW_BEACON_TEMPLATE */
++    const bool v7 = isset(sc->sc_enabled_capa, 70); /* CSA_AND_TBTT_OFFLOAD */
++    uint8_t frame[24 + 12 + sizeof(ies)];
++    memset(frame, 0, sizeof(frame));
++    frame[0] = IEEE80211_FC0_TYPE_MGT | IEEE80211_FC0_SUBTYPE_BEACON;
++    memset(frame + 4, 0xff, ETHER_ADDR_LEN);
++    IEEE80211_ADDR_COPY(frame + 10, address);
++    // GO: BSSID = own address. IBSS: the AWDL BSSID is the IBSS BSSID.
++    IEEE80211_ADDR_COPY(frame + 16, sc->sc_awdl_ibss ? awdlBssid : address);
++    frame[32] = bi & 0xff;
++    frame[33] = bi >> 8;
++    frame[34] = sc->sc_awdl_ibss ? 0x02 : 0x01;   /* IBSS : ESS */
++    memcpy(frame + 36, ies, sizeof(ies));
++    // IBSS beacons carry no TIM (iwlwifi sets tim_idx only for AP).
++    const size_t frameLen = sc->sc_awdl_ibss ? sizeof(frame) - 6 : sizeof(frame);
++    const uint32_t timIdxOut = sc->sc_awdl_ibss ? 0 : (uint32_t)timIdx;
++    const uint32_t timSizeOut = sc->sc_awdl_ibss ? 0 : 4;
++
++    if (v9) {
++        // BEACON_TEMPLATE_CMD_API_S_VER_9 (iwlwifi send_beacon_v9): byte_cnt,
++        // flags (rate PLCP; TX_CMD <= v8 and v1 flags), 8 reserved bytes,
++        // template id, tim_idx, tim_size, ecsa/csa offsets, then the frame.
++        struct {
++            uint16_t byte_cnt;
++            uint16_t flags;
++            uint8_t reserved[8];
++            uint32_t template_id;
++            uint32_t tim_idx;
++            uint32_t tim_size;
++            uint32_t ecsa_offset;
++            uint32_t csa_offset;
++        } __packed hdr9;
++        uint8_t buf9[sizeof(hdr9) + sizeof(frame)];
++        memset(&hdr9, 0, sizeof(hdr9));
++        hdr9.byte_cnt = htole16(frameLen);
++        hdr9.flags = htole16(13U);        /* 6 Mbps OFDM PLCP */
++        hdr9.template_id = htole32(IWM_AWDL_MAC_INDEX);
++        hdr9.tim_idx = htole32(timIdxOut);
++        hdr9.tim_size = htole32(timSizeOut);
++        memcpy(buf9, &hdr9, sizeof(hdr9));
++        memcpy(buf9 + sizeof(hdr9), frame, frameLen);
++        const int err9 = iwm_send_cmd_pdu(sc, IWM_BEACON_TEMPLATE_CMD, IWM_CMD_ASYNC,
++                                          sizeof(hdr9) + frameLen, buf9);
++        sc->sc_awdl_go_beacon_err = err9;
++        IOLog("itlwm: AWDL_GO_BEACON_V1 v9 len=%u err=%d\n",
++              (unsigned)sizeof(buf9), err9);
++        return err9;
++    }
++    uint8_t buf[sizeof(struct iwm_mac_beacon_cmd) + 8 + sizeof(frame)];
++    memset(buf, 0, sizeof(buf));
++    struct iwm_mac_beacon_cmd *bcmd = (struct iwm_mac_beacon_cmd *)buf;
++    uint8_t ant = iwm_fw_valid_tx_ant(sc);
++    ant &= (uint8_t)-ant;       /* lowest valid antenna */
++    bcmd->tx.len = htole16(sizeof(frame));
++    bcmd->tx.tx_flags = htole32(IWM_TX_CMD_FLG_SEQ_CTL | IWM_TX_CMD_FLG_TSF);
++    bcmd->tx.rate_n_flags = htole32(13U /* 6 Mbps OFDM PLCP */ |
++                                    ((uint32_t)ant << IWM_RATE_MCS_ANT_POS));
++    bcmd->tx.sta_id = IWM_AWDL_BSTA(sc);
++    bcmd->tx.life_time = htole32(IWM_TX_CMD_LIFE_TIME_INFINITE);
++    bcmd->template_id = htole32(IWM_AWDL_MAC_INDEX);
++    bcmd->tim_idx = htole32(timIdx);
++    bcmd->tim_size = htole32(4);
++    size_t off = sizeof(struct iwm_mac_beacon_cmd);
++    if (v7)
++        off += 8;               /* ecsa_offset, csa_offset = 0 */
++    memcpy(buf + off, frame, sizeof(frame));
++    const int err = iwm_send_cmd_pdu(sc, IWM_BEACON_TEMPLATE_CMD, IWM_CMD_ASYNC,
++                                     off + sizeof(frame), buf);
++    sc->sc_awdl_go_beacon_err = err;
++    IOLog("itlwm: AWDL_GO_BEACON_V1 v%d len=%u err=%d\n", v7 ? 7 : 6,
++          (unsigned)(off + sizeof(frame)), err);
++    return err;
++}
++
++int ItlIwm::
++iwm_awdl_go_beacon_result(void) const
++{
++    return com.sc_awdl_go_beacon_err;
++}
++
++void ItlIwm::
++iwm_awdl_go_beacon_times(uint32_t out[3]) const
++{
++    out[0] = com.sc_awdl_go_gp2_time;
++    out[1] = com.sc_awdl_go_sta_rstamp;
++    out[2] = com.sc_awdl_go_beacon_time;
++}
++
++// GO multicast station on the CAB queue (iwlwifi iwl_mvm_add_mcast_sta).
++int ItlIwm::
++iwm_awdl_go_mcast_sta(struct iwm_softc *sc, bool add)
++{
++    if (!add) {
++        if (!sc->sc_awdl_go_mcast_active)
++            return 0;
++        struct iwm_rm_sta_cmd rm;
++        memset(&rm, 0, sizeof(rm));
++        rm.sta_id = IWM_AWDL_MCAST_STA_ID;
++        iwm_flush_tx_path(sc, 1U << IWM_DQA_GCAST_QUEUE);
++        if (iwm_nic_lock(sc)) {
++            iwm_disable_txq_for_sta(sc, IWM_AWDL_MCAST_STA_ID,
++                                    IWM_DQA_GCAST_QUEUE, 0, 0);
++            iwm_nic_unlock(sc);
++        }
++        sc->sc_awdl_go_mcast_active = 0;
++        return iwm_send_cmd_pdu(sc, IWM_REMOVE_STA, 0, sizeof(rm), &rm);
++    }
++    static const uint8_t maddr[ETHER_ADDR_LEN] = { 0x03, 0, 0, 0, 0, 0 };
++    struct iwm_add_sta_cmd cmd;
++    uint32_t status = IWM_ADD_STA_SUCCESS;
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.sta_id = IWM_AWDL_MCAST_STA_ID;
++    cmd.mac_id_n_color = htole32(
++        IWM_AWDL_MACID(sc));
++    IEEE80211_ADDR_COPY(cmd.addr, maddr);
++    cmd.tfd_queue_msk = htole32(1U << IWM_DQA_GCAST_QUEUE);
++    cmd.tid_disable_tx = htole16(0xffff);
++    const bool staType = isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE);
++    if (staType)
++        cmd.station_type = IWM_STA_MULTICAST;
++    int err = 0;
++    // iwlwifi iwl_mvm_add_mcast_sta(): on non-TVQM firmware WITH station-type
++    // API the CAB queue is enabled BEFORE ADD_STA (and is in the TFD mask);
++    // only without that API is it enabled after. The reverse order asserted
++    // 0x21A0 (data1 = station 8) on this firmware.
++    if (staType) {
++        if (!iwm_nic_lock(sc))
++            return EBUSY;
++        err = iwm_enable_txq(sc, IWM_AWDL_MCAST_STA_ID, IWM_DQA_GCAST_QUEUE,
++                             sc->sc_awdl_ibss ? IWM_TX_FIFO_BE : IWM_TX_FIFO_MCAST,
++                             0, 0, 0);
++        iwm_nic_unlock(sc);
++        if (err)
++            return err;
++    }
++    err = iwm_send_cmd_pdu_status(sc, IWM_ADD_STA,
++        staType ? sizeof(cmd) : sizeof(struct iwm_add_sta_cmd_v7),
++        &cmd, &status);
++    if (!err && (status & IWM_ADD_STA_STATUS_MASK) != IWM_ADD_STA_SUCCESS)
++        err = EIO;
++    if (err)
++        return err;
++    if (!staType) {
++        if (!iwm_nic_lock(sc))
++            return EBUSY;
++        err = iwm_enable_txq(sc, IWM_AWDL_MCAST_STA_ID, IWM_DQA_GCAST_QUEUE,
++                             IWM_TX_FIFO_MCAST, 0, 0, 0);
++        iwm_nic_unlock(sc);
++        if (err)
++            return err;
++    }
++    sc->sc_awdl_go_mcast_active = 1;
++    return 0;
++}
++
++int ItlIwm::
++iwm_awdl_mcc_sta_cmd(struct iwm_softc *sc, bool add)
++{
++    if (!add) {
++        struct iwm_rm_sta_cmd rm;
++        memset(&rm, 0, sizeof(rm));
++        rm.sta_id = IWM_AWDL_BSTA(sc);
++        return iwm_send_cmd_pdu(sc, IWM_REMOVE_STA, 0, sizeof(rm), &rm);
++    }
++
++    struct iwm_add_sta_cmd cmd;
++    uint32_t status = IWM_ADD_STA_SUCCESS;
++    size_t cmdsize;
++    int err;
++
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.sta_id = IWM_AWDL_BSTA(sc);
++    cmd.mac_id_n_color = htole32(
++        IWM_AWDL_MACID(sc));
++    IEEE80211_ADDR_COPY(cmd.addr, etherbroadcastaddr);
++    cmd.tfd_queue_msk = htole32(1U << IWM_AWDL_TXQ(sc));
++    cmd.tid_disable_tx = htole16(0xffff);
++    if (isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE))
++        cmd.station_type = IWM_STA_GENERAL_PURPOSE;
++    cmdsize = isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE) ?
++        sizeof(cmd) : sizeof(struct iwm_add_sta_cmd_v7);
++    err = iwm_send_cmd_pdu_status(sc, IWM_ADD_STA, cmdsize, &cmd, &status);
++    if (!err && (status & IWM_ADD_STA_STATUS_MASK) != IWM_ADD_STA_SUCCESS)
++        err = EIO;
++    return err;
++}
++
++// A client station of the AWDL GO MAC for one IO80211 peer: exact MAC, no
++// TX queue (queue 2 stays with broadcast station 3), all TIDs TX-disabled.
++int ItlIwm::
++iwm_awdl_peer_sta_cmd(struct iwm_softc *sc, uint8_t staId,
++                      const uint8_t *address, bool add)
++{
++    if (!add) {
++        struct iwm_rm_sta_cmd rm;
++        memset(&rm, 0, sizeof(rm));
++        rm.sta_id = staId;
++        return iwm_send_cmd_pdu(sc, IWM_REMOVE_STA, 0, sizeof(rm), &rm);
++    }
++    struct iwm_add_sta_cmd cmd;
++    uint32_t status = IWM_ADD_STA_SUCCESS;
++    memset(&cmd, 0, sizeof(cmd));
++    cmd.sta_id = staId;
++    cmd.mac_id_n_color = htole32(IWM_AWDL_MACID(sc));
++    IEEE80211_ADDR_COPY(cmd.addr, address);
++    cmd.tid_disable_tx = htole16(0xffff);
++    if (isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE))
++        cmd.station_type = IWM_STA_LINK;
++    const size_t cmdsize = isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE) ?
++        sizeof(cmd) : sizeof(struct iwm_add_sta_cmd_v7);
++    int err = iwm_send_cmd_pdu_status(sc, IWM_ADD_STA, cmdsize, &cmd, &status);
++    if (!err && (status & IWM_ADD_STA_STATUS_MASK) != IWM_ADD_STA_SUCCESS)
++        err = EIO;
++    return err;
++}
++
++int ItlIwm::
++iwm_awdl_peer_cache_update(const uint8_t *address, bool add)
++{
++    struct iwm_softc *sc = &com;
++    if (address == NULL || IEEE80211_ADDR_EQ(address, etheranyaddr) ||
++        IEEE80211_IS_MULTICAST(address))
++        return EINVAL;
++    if (sc->sc_awdl_mcc_state != IWM_AWDL_MCC_ACTIVE)
++        return EAGAIN;
++
++    int s = splnet();
++    int matching = -1;
++    int freeSlot = -1;
++    for (size_t i = 0; i < IWM_AWDL_PEER_MAX; ++i) {
++        if (sc->sc_awdl_peer_active[i] &&
++            IEEE80211_ADDR_EQ(sc->sc_awdl_peer_addr[i], address))
++            matching = static_cast<int>(i);
++        else if (!sc->sc_awdl_peer_active[i] && freeSlot < 0)
++            freeSlot = static_cast<int>(i);
++    }
++
++    if (add && matching >= 0) {
++        sc->sc_awdl_peer_last_error = 0;
++        splx(s);
++        return 0;
++    }
++    if (!add && matching < 0) {
++        sc->sc_awdl_peer_last_error = 0;
++        splx(s);
++        return 0;
++    }
++
++    const int slot = add ? freeSlot : matching;
++    // On a GO MAC (itlwm_awdl_go=1) each peer is a real client station:
++    // that is what lets firmware deliver its unicast data to the host.
++    int err = slot < 0 ? ENOSPC : 0;
++    if (err == 0 && sc->sc_awdl_go)
++        err = iwm_awdl_peer_sta_cmd(
++            sc, static_cast<uint8_t>(IWM_AWDL_PEER_STA_BASE + slot),
++            address, add);
++    sc->sc_awdl_peer_last_error = err;
++    if (err == 0) {
++        if (add) {
++            IEEE80211_ADDR_COPY(sc->sc_awdl_peer_addr[slot], address);
++            sc->sc_awdl_peer_active[slot] = 1;
++            ++sc->sc_awdl_peer_adds;
++        } else {
++            sc->sc_awdl_peer_active[slot] = 0;
++            memset(sc->sc_awdl_peer_addr[slot], 0, ETHER_ADDR_LEN);
++            ++sc->sc_awdl_peer_deletes;
++        }
++        // IO80211 requires Broadcom-style completion indications to retire
++        // its cache-pending state.  On P2P_DEVICE the cache is host-side
++        // metadata only (LINK stations there cause firmware error 0x2073);
++        // on the GO MAC each peer is also a firmware client station.
++        IOLog("itlwm: AWDL_PEER_CACHE_V2 %s slot=%d peer=%s %s\n",
++              add ? "add" : "delete", slot, ether_sprintf(address),
++              sc->sc_awdl_go ? "go-client" : "host-only");
++    } else {
++        ++sc->sc_awdl_peer_failures;
++        IOLog("itlwm: AWDL_PEER_CACHE_V1 %s failed peer=%s error=%d\n",
++              add ? "add" : "delete", ether_sprintf(address), err);
++    }
++    splx(s);
++    return err;
++}
++
++void ItlIwm::
++iwm_awdl_peer_cache_stats(uint32_t *out5, uint8_t *addresses) const
++{
++    uint32_t active = 0;
++    for (size_t i = 0; i < IWM_AWDL_PEER_MAX; ++i) {
++        if (com.sc_awdl_peer_active[i])
++            ++active;
++        memcpy(addresses + i * ETHER_ADDR_LEN,
++               com.sc_awdl_peer_addr[i], ETHER_ADDR_LEN);
++    }
++    out5[0] = active;
++    out5[1] = com.sc_awdl_peer_adds;
++    out5[2] = com.sc_awdl_peer_deletes;
++    out5[3] = com.sc_awdl_peer_failures;
++    out5[4] = static_cast<uint32_t>(com.sc_awdl_peer_last_error);
++}
++
++bool ItlIwm::
++iwm_awdl_mcc_active(void) const
++{
++    return com.sc_awdl_mcc_state == IWM_AWDL_MCC_ACTIVE;
++}
++
++void ItlIwm::
++iwm_set_awdl_sta_rx(bool enable)
++{
++    com.sc_awdl_sta_rx = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_shared_phy(bool enable)
++{
++    com.sc_awdl_shared_phy = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_force_promisc(bool enable)
++{
++    com.sc_awdl_force_promisc = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_ibss(bool enable)
++{
++    com.sc_awdl_ibss = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_bss_sta(bool enable)
++{
++    com.sc_awdl_bss_sta = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_go_knobs2(uint32_t color, uint32_t noPromisc, uint32_t preMod)
++{
++    com.sc_awdl_color = color & 0x7;
++    com.sc_awdl_go_nopromisc = noPromisc != 0;
++    com.sc_awdl_go_premod = preMod != 0;
++}
++
++void ItlIwm::
++iwm_set_awdl_go_knobs(uint32_t tsf, uint32_t btimeSta, uint32_t bsta)
++{
++    com.sc_awdl_go_tsf = tsf <= IWM_TSF_ID_D ? tsf : IWM_TSF_ID_B;
++    com.sc_awdl_go_btime_sta = btimeSta != 0;
++    com.sc_awdl_bsta_id = (bsta >= 2 && bsta < IWM_STATION_COUNT &&
++                           bsta != IWM_AWDL_MCAST_STA_ID &&
++                           (bsta < IWM_AWDL_PEER_STA_BASE ||
++                            bsta >= IWM_AWDL_PEER_STA_BASE + IWM_AWDL_PEER_MAX)) ?
++        bsta : IWM_AWDL_STA_ID;
++}
++
++void ItlIwm::
++iwm_set_awdl_go(bool enable)
++{
++    com.sc_awdl_go = enable ? 1 : 0;
++}
++
++bool ItlIwm::
++iwm_awdl_mcc_shared(void) const
++{
++    return com.sc_awdl_mcc_shared != 0;
++}
++
++void ItlIwm::
++iwm_restart_diag(uint32_t *out4) const
++{
++    out4[0] = com.sc_diag_sw_errors;
++    out4[1] = com.sc_diag_last_error_id;
++    out4[2] = com.sc_diag_tx_timeouts;
++    out4[3] = com.sc_diag_tx_timeout_qmask;
++}
++
++void ItlIwm::
++iwm_note_sw_error(struct iwm_softc *sc)
++{
++    const uint32_t base = sc->sc_uc.uc_error_event_table;
++    const uint32_t umacBase = sc->sc_uc.uc_umac_error_event_table;
++
++    ++sc->sc_diag_sw_errors;
++    memcpy(sc->sc_diag_mac_cmd_at_error, sc->sc_diag_mac_cmd_ring,
++           sizeof(sc->sc_diag_mac_cmd_at_error));
++    // Error table: valid, error_id, ... (as read by iwm_nic_error()).
++    if (base >= 0x800000 &&
++        iwm_read_mem(sc, base, sc->sc_diag_lmac_table,
++                     nitems(sc->sc_diag_lmac_table)) == 0 &&
++        sc->sc_diag_lmac_table[0])
++        sc->sc_diag_last_error_id = sc->sc_diag_lmac_table[1];
++    // UMAC: valid, error_id, blink1/2, ilink1/2, data1-3, major, minor,
++    // frame/stack pointer, cmd_header (last host command), nic_isr_pref.
++    if (umacBase >= 0x800000)
++        iwm_read_mem(sc, umacBase, sc->sc_diag_umac_table,
++                     nitems(sc->sc_diag_umac_table));
++}
++
++// Ring of the last eight MAC_CONTEXT_CMDs: (seq << 16) | (mac_id << 8) | action.
++// The UMAC error table names only the command ID, not whose context it was.
++void ItlIwm::
++iwm_note_mac_ctxt_cmd(struct iwm_softc *sc, uint32_t macId, uint32_t action)
++{
++    const uint32_t seq = ++sc->sc_diag_mac_cmd_seq;
++    sc->sc_diag_mac_cmd_ring[(seq - 1) % nitems(sc->sc_diag_mac_cmd_ring)] =
++        (seq << 16) | ((macId & 0xff) << 8) | (action & 0xff);
++}
++
++void ItlIwm::
++iwm_restart_diag_mac_cmds(uint32_t *out8) const
++{
++    memcpy(out8, com.sc_diag_mac_cmd_at_error,
++           sizeof(com.sc_diag_mac_cmd_at_error));
++}
++
++void ItlIwm::
++iwm_restart_diag_tables(uint32_t *lmac24, uint32_t *umac15) const
++{
++    memcpy(lmac24, com.sc_diag_lmac_table, sizeof(com.sc_diag_lmac_table));
++    memcpy(umac15, com.sc_diag_umac_table, sizeof(com.sc_diag_umac_table));
++}
++
++void ItlIwm::
++iwm_awdl_shared_stats(uint32_t *out2) const
++{
++    out2[0] = com.sc_awdl_shared_binds;
++    out2[1] = com.sc_awdl_shared_evictions;
++}
++
++void ItlIwm::
++iwm_set_awdl_time_event(bool enable)
++{
++    com.sc_awdl_te_enabled = enable ? 1 : 0;
++}
++
++void ItlIwm::
++iwm_awdl_q2_stats(uint32_t *out6) const
++{
++    out6[0] = com.sc_awdl_q2_submitted;
++    out6[1] = com.sc_awdl_q2_resp;
++    out6[2] = com.sc_awdl_q2_ok;
++    out6[3] = com.sc_awdl_q2_fail;
++    out6[4] = com.sc_awdl_q2_last_status;
++    out6[5] = com.sc_awdl_q2_last_retries;
++}
++
++void ItlIwm::
++iwm_awdl_q2_diag(uint32_t *out22) const
++{
++    for (int i = 0; i < 17; i++)
++        out22[i] = com.sc_awdl_q2_fail_status[i];
++    out22[17] = com.sc_awdl_q2_uc_ok;
++    out22[18] = com.sc_awdl_q2_uc_fail;
++    out22[19] = com.sc_awdl_q2_fail_te_off;
++    out22[20] = com.sc_awdl_q2_ok_te_off;
++    out22[21] = com.sc_awdl_q2_fail_near_tecmd;
++}
++
++void ItlIwm::
++iwm_awdl_time_event_stats(uint32_t *out7) const
++{
++    out7[0] = com.sc_awdl_te_enabled;
++    out7[1] = com.sc_awdl_te_uid;
++    out7[2] = com.sc_awdl_te_active;
++    out7[3] = com.sc_awdl_te_starts;
++    out7[4] = com.sc_awdl_te_ends;
++    out7[5] = com.sc_awdl_te_last_status;
++    out7[6] = com.sc_awdl_te_last_timestamp;
++}
++
++int ItlIwm::
++iwm_awdl_mcc_time_event_cmd(struct iwm_softc *sc, bool add,
++                            uint32_t applyTime, uint32_t intervalTu,
++                            uint32_t durationTu, bool startImmediately)
++{
++    struct iwm_time_event_cmd cmd;
++    memset(&cmd, 0, sizeof(cmd));
++    {
++        uint64_t teAbs = 0, teNs = 0;
++        clock_get_uptime(&teAbs);
++        absolutetime_to_nanoseconds(teAbs, &teNs);
++        sc->sc_awdl_te_cmd_ns = teNs;
++    }
++    cmd.id_and_color = htole32(
++        IWM_AWDL_MACID(sc));
++    cmd.action = htole32(add ? IWM_FW_CTXT_ACTION_ADD :
++                         IWM_FW_CTXT_ACTION_REMOVE);
++    cmd.id = htole32(add ? IWM_TE_P2P_DEVICE_DISCOVERABLE :
++                     sc->sc_awdl_te_uid);
++    if (add) {
++        cmd.apply_time = htole32(applyTime);
++        cmd.max_delay = htole32(0);
++        cmd.interval = htole32(intervalTu);
++        cmd.duration = htole32(durationTu);
++        cmd.repeat = IWM_TE_V2_REPEAT_ENDLESS;
++        cmd.max_frags = IWM_TE_V2_FRAG_NONE;
++        cmd.policy = htole16(IWM_TE_V2_NOTIF_HOST_EVENT_START |
++                             IWM_TE_V2_NOTIF_HOST_EVENT_END |
++                             (startImmediately ?
++                              IWM_T2_V2_START_IMMEDIATELY : 0));
++        // The START notification can race ahead of CMD_WANT_RESP wakeup. Let
++        // the RX handler identify that early notification by AWDL MAC context.
++        sc->sc_awdl_te_pending = 1;
++    }
++    const int err = iwm_send_time_event_cmd(sc, &cmd);
++    sc->sc_awdl_te_pending = 0;
++    if (err == 0) {
++        if (add) {
++            sc->sc_awdl_te_uid = sc->sc_time_event_uid;
++            IOLog("itlwm: AWDL_TE_V2 scheduled uid=%u apply=%u interval=%u "
++                  "duration=%u immediate=%u\n", sc->sc_awdl_te_uid,
++                  applyTime, intervalTu, durationTu,
++                  startImmediately ? 1U : 0U);
++        } else {
++            sc->sc_awdl_te_active = 0;
++            sc->sc_awdl_te_uid = 0;
++        }
++    }
++    return err;
++}
++
++int ItlIwm::
++iwm_ensure_awdl_time_event(void)
++{
++    struct iwm_softc *sc = &com;
++    if (sc->sc_awdl_mcc_state != IWM_AWDL_MCC_ACTIVE)
++        return EINVAL;
++
++    sc->sc_awdl_te_enabled = 1;
++    if (sc->sc_awdl_te_uid != 0)
++        return 0;
++    return iwm_awdl_mcc_time_event_cmd(sc, true, 0, 16, 16, true);
++}
++
++int ItlIwm::
++iwm_align_awdl_time_event(uint32_t applyTime, uint32_t intervalTu,
++                          uint32_t durationTu)
++{
++    struct iwm_softc *sc = &com;
++    if (!sc->sc_awdl_te_enabled ||
++        sc->sc_awdl_mcc_state != IWM_AWDL_MCC_ACTIVE ||
++        intervalTu == 0 || durationTu == 0 ||
++        durationTu > intervalTu)
++        return EINVAL;
++
++    if (sc->sc_awdl_te_uid != 0) {
++        const int removeErr = iwm_awdl_mcc_time_event_cmd(
++            sc, false, 0, 0, 0, false);
++        if (removeErr)
++            return removeErr;
++    }
++    const int alignedErr = iwm_awdl_mcc_time_event_cmd(
++        sc, true, applyTime, intervalTu, durationTu, false);
++    if (alignedErr) {
++        // Preserve the already-proven queue-2 service path if the experimental
++        // phase-aligned command is rejected. Report the original error while
++        // making a best-effort return to the immediate proof event.
++        iwm_awdl_mcc_time_event_cmd(sc, true, 0, 16, 16, true);
++        return alignedErr;
++    }
++    return 0;
++}
++
++// Retune the separate AWDL PHY context to another 5 GHz channel with a
++// single PHY_CONTEXT MODIFY (same band, so never a remove/add). Used to
++// follow the AWDL master's channel schedule; not applicable when the AWDL
++// MAC shares the station's PHY.
++int ItlIwm::
++iwm_awdl_retune(uint16_t channel)
++{
++    struct iwm_softc *sc = &com;
++    struct ieee80211com *ic = &sc->sc_ic;
++    if (sc->sc_awdl_mcc_state != IWM_AWDL_MCC_ACTIVE || sc->sc_awdl_mcc_shared)
++        return EINVAL;
++    if (channel == 0 || channel >= nitems(ic->ic_channels))
++        return EINVAL;
++    struct ieee80211_channel *chan = &ic->ic_channels[channel];
++    if (chan->ic_freq == 0 || !IEEE80211_IS_CHAN_5GHZ(chan))
++        return EINVAL;
++    if (IWM_AWDL_BEACONING(sc) &&
++        (sc->sc_awdl_reg_count == 0 ||
++         (iwm_awdl_reg_flags(channel) &
++          (IWM_NVM_CHANNEL_VALID | IWM_NVM_CHANNEL_ACTIVE | IWM_NVM_CHANNEL_RADAR)) !=
++         (IWM_NVM_CHANNEL_VALID | IWM_NVM_CHANNEL_ACTIVE)))
++        return EPERM;
++    struct iwm_phy_ctxt *phyctxt = &sc->sc_phyctxt[IWM_AWDL_PHY_INDEX];
++    if (phyctxt->channel == chan)
++        return 0;
++    int s = splnet();
++    const int err = iwm_phy_ctxt_update(sc, phyctxt, chan, 1, 1, 0);
++    if (err == 0) {
++        sc->sc_awdl_mcc_channel = channel;
++        ++sc->sc_awdl_retunes;
++    } else {
++        ++sc->sc_awdl_retune_errors;
++    }
++    splx(s);
++    return err;
++}
++
++void ItlIwm::
++iwm_awdl_retune_stats(uint32_t *out2) const
++{
++    out2[0] = com.sc_awdl_retunes;
++    out2[1] = com.sc_awdl_retune_errors;
++}
++
++bool ItlIwm::
++iwm_awdl_channel_usable(uint16_t channel) const
++{
++    const struct ieee80211com *ic = &com.sc_ic;
++    return channel != 0 && channel < nitems(ic->ic_channels) &&
++        ic->ic_channels[channel].ic_freq != 0 &&
++        IEEE80211_IS_CHAN_5GHZ(&ic->ic_channels[channel]);
++}
++
++uint32_t ItlIwm::
++iwm_awdl_reg_flags(uint16_t channel) const
++{
++    return channel < nitems(com.sc_awdl_reg_flags) ?
++        com.sc_awdl_reg_flags[channel] : 0;
++}
++
++int ItlIwm::
++iwm_awdl_mcc_configure(const uint8_t *address, uint16_t channel,
++                       uint32_t *failure_stage)
++{
++    struct iwm_softc *sc = &com;
++    struct ieee80211com *ic = &sc->sc_ic;
++    struct ieee80211_channel *chan;
++    uint32_t completed_stage = 0;
++    int err = 0;
++    int s;
++
++    if (failure_stage != NULL)
++        *failure_stage = 0;
++    if (address == NULL || IEEE80211_ADDR_EQ(address, etheranyaddr) ||
++        channel >= nitems(ic->ic_channels))
++        return EINVAL;
++    chan = &ic->ic_channels[channel];
++    if (chan->ic_freq == 0 || !IEEE80211_IS_CHAN_5GHZ(chan))
++        return EINVAL;
++    if (!isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT))
++        return ENOTSUP;
++    if (ic->ic_state != IEEE80211_S_RUN ||
++        (sc->sc_flags & (IWM_FLAG_MAC_ACTIVE | IWM_FLAG_BINDING_ACTIVE |
++                         IWM_FLAG_STA_ACTIVE)) !=
++        (IWM_FLAG_MAC_ACTIVE | IWM_FLAG_BINDING_ACTIVE | IWM_FLAG_STA_ACTIVE))
++        return EAGAIN;
++    if (sc->sc_awdl_mcc_state == IWM_AWDL_MCC_ACTIVE &&
++        sc->sc_awdl_mcc_channel == channel &&
++        IEEE80211_ADDR_EQ(sc->sc_awdl_mcc_macaddr, address)) {
++        if (failure_stage != NULL)
++            *failure_stage = sc->sc_awdl_mcc_state;
++        return 0;
++    }
++    if (sc->sc_awdl_mcc_state != 0)
++        iwm_awdl_mcc_teardown();
++
++    if (IWM_AWDL_BEACONING(sc)) {
++        // LMAC 0x23d90 asserts 0x14fc when a GO channel lacks VALID/ACTIVE
++        // or requires radar detection. Query firmware's current profile;
++        // the static NVM channel map can disagree after a country update.
++        sc->sc_awdl_reg_count = 0;
++        // On old firmware this command updates the country rather than
++        // querying it. Never reset the regulatory domain for an AWDL test.
++        if (!isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_WIFI_MCC_UPDATE) &&
++            !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_LAR_MULTI_MCC))
++            return ENOTSUP;
++        err = iwm_send_update_mcc_cmd(sc, sc->sc_fw_mcc);
++        if (err)
++            return err;
++        const uint32_t flags = iwm_awdl_reg_flags(channel);
++        const uint32_t required = IWM_NVM_CHANNEL_VALID | IWM_NVM_CHANNEL_ACTIVE;
++        IOLog("itlwm: AWDL_GO_REG_V1 channel=%u flags=0x%x count=%u\n",
++              channel, flags, sc->sc_awdl_reg_count);
++        if (sc->sc_awdl_reg_count == 0 || (flags & required) != required ||
++            (flags & IWM_NVM_CHANNEL_RADAR) != 0)
++            return EPERM;
++    }
++
++    s = splnet();
++    sc->sc_awdl_mcc_channel = channel;
++    IEEE80211_ADDR_COPY(sc->sc_awdl_mcc_macaddr, address);
++    {
++        struct iwm_node *bss = (struct iwm_node *)ic->ic_bss;
++        sc->sc_awdl_mcc_shared = sc->sc_awdl_shared_phy && bss != NULL &&
++            bss->in_phyctxt != NULL && bss->in_phyctxt->channel != NULL &&
++            ieee80211_chan2ieee(ic, bss->in_phyctxt->channel) == channel;
++    }
++    if (!sc->sc_awdl_mcc_shared) {
++        err = iwm_phy_ctxt_update(sc, &sc->sc_phyctxt[IWM_AWDL_PHY_INDEX],
++                                  chan, 1, 1, 0);
++        if (err)
++            goto out;
++    }
++
++    if (IWM_AWDL_BEACONING(sc)) {
++        // iwlwifi start_ap_ibss(): pre-22000 firmware takes the beacon
++        // template before the GO MAC is added; set the TBTT from GP2.
++        if (iwm_nic_lock(sc)) {
++            sc->sc_awdl_go_beacon_time =
++                iwm_read_prph(sc, IWM_DEVICE_SYSTEM_TIME_REG);
++            sc->sc_awdl_go_gp2_time = sc->sc_awdl_go_beacon_time;
++            iwm_nic_unlock(sc);
++        }
++        sc->sc_awdl_go_sta_rstamp = ic->ic_bss != NULL ?
++            (uint32_t)ic->ic_bss->ni_rstamp : 0;
++        // ni_rstamp is the AP TSF, not the firmware GP2 clock used here.
++        // Give GO setup half a beacon interval before the first TBTT.
++        if (sc->sc_awdl_go_btime_sta)
++            sc->sc_awdl_go_beacon_time = sc->sc_awdl_go_gp2_time +
++                100U * 1024U / 2U;
++        IOLog("itlwm: AWDL_GO_TIME_V1 gp2=%u sta=%u programmed=%u\n",
++              sc->sc_awdl_go_gp2_time, sc->sc_awdl_go_sta_rstamp,
++              sc->sc_awdl_go_beacon_time);
++        err = iwm_awdl_go_beacon_cmd(sc, address);
++        if (err)
++            goto out;
++    }
++    err = iwm_awdl_mcc_mac_cmd(sc, address, IWM_FW_CTXT_ACTION_ADD);
++    if (err)
++        goto out;
++    sc->sc_awdl_mcc_state |= IWM_AWDL_MCC_MAC_ACTIVE;
++    completed_stage |= IWM_AWDL_MCC_MAC_ACTIVE;
++
++    // iwl_mvm_binding_add_vif disables Smart FIFO before binding a second
++    // data MAC. SF_FULL_ON only supports the single infrastructure station;
++    // GO/IBSS must use SF_UNINIT while both interfaces are bound.
++    if (IWM_AWDL_BEACONING(sc)) {
++        err = iwm_sf_config(sc, IWM_SF_UNINIT);
++        if (err)
++            goto out;
++        sc->sc_awdl_sf_forced = true;
++        IOLog("itlwm: AWDL_GO_SF_V1 disabled before binding\n");
++    }
++
++    err = sc->sc_awdl_mcc_shared ?
++        iwm_awdl_mcc_shared_binding_cmd(sc, true) :
++        iwm_awdl_mcc_binding_cmd(sc, IWM_FW_CTXT_ACTION_ADD);
++    if (err)
++        goto out;
++    sc->sc_awdl_mcc_state |= IWM_AWDL_MCC_BINDING_ACTIVE;
++    completed_stage |= IWM_AWDL_MCC_BINDING_ACTIVE;
++    if (IWM_AWDL_BEACONING(sc) && sc->sc_awdl_go_premod) {
++        err = iwm_awdl_mcc_mac_cmd(sc, address, IWM_FW_CTXT_ACTION_MODIFY);
++        if (err)
++            goto out;
++    }
++    if (IWM_AWDL_BEACONING(sc) && sc->sc_awdl_go_prequota &&
++        !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DYNAMIC_QUOTA)) {
++        err = iwm_update_quotas(sc, (struct iwm_node *)ic->ic_bss, 1);
++        if (err)
++            goto out;
++    }
++
++    if (!iwm_nic_lock(sc)) {
++        err = EBUSY;
++        goto out;
++    }
++    err = iwm_enable_txq(sc, IWM_AWDL_BSTA(sc), IWM_AWDL_TXQ(sc),
++                         IWM_TX_FIFO_VO, 0, IWM_MAX_TID_COUNT, 0);
++    iwm_nic_unlock(sc);
++    if (err)
++        goto out;
++    sc->sc_awdl_mcc_state |= IWM_AWDL_MCC_QUEUE_ACTIVE;
++    completed_stage |= IWM_AWDL_MCC_QUEUE_ACTIVE;
++
++    // Firmware 46's ADD_STA path explicitly requires the type-2 multicast
++    // station before the type-1 general-purpose station (assert 0x3438).
++    // This matches iwlmvm when the STA_TYPE API is present.
++    if (IWM_AWDL_BEACONING(sc)) {
++        err = iwm_awdl_go_mcast_sta(sc, true);
++        if (err)
++            goto out;
++    }
++    err = iwm_awdl_mcc_sta_cmd(sc, true);
++    if (err)
++        goto out;
++    sc->sc_awdl_mcc_state |= IWM_AWDL_MCC_STA_ACTIVE;
++    completed_stage |= IWM_AWDL_MCC_STA_ACTIVE;
++    if (sc->sc_awdl_te_enabled) {
++        err = iwm_awdl_mcc_time_event_cmd(sc, true, 0, 16, 16, true);
++        if (err)
++            goto out;
++    }
++    if (!isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DYNAMIC_QUOTA))
++        err = iwm_update_quotas(sc, (struct iwm_node *)ic->ic_bss, 1);
++out:
++    splx(s);
++    if (failure_stage != NULL)
++        *failure_stage = completed_stage;
++    if (err) {
++        IOLog("itlwm: AWDL_MCC_V1 setup failed stage=0x%x channel=%u error=%d\n",
++              completed_stage, channel, err);
++        iwm_awdl_mcc_teardown();
++    } else {
++        IOLog("itlwm: AWDL_MCC_V1 active phy=%u mac=%u sta=%u queue=%u channel=%u address=%s\n",
++              IWM_AWDL_PHY_INDEX, IWM_AWDL_MAC_INDEX, IWM_AWDL_BSTA(sc),
++              IWM_AWDL_TXQ(sc), channel,
++              ether_sprintf(sc->sc_awdl_mcc_macaddr));
++    }
++    return err;
++}
++
++void ItlIwm::
++iwm_awdl_mcc_teardown(void)
++{
++    struct iwm_softc *sc = &com;
++    struct ieee80211com *ic = &sc->sc_ic;
++    int s = splnet();
++
++    if (awdl9560Requested && ic->ic_awdl_rx != nullptr) {
++        ic->ic_awdl_rx = nullptr;
++        ic->ic_awdl_rx_arg = nullptr;
++        if (auto *controller = getController())
++            controller->setProperty("ITL9560AWDLState", "waiting for association");
++    }
++    if (sc->sc_awdl_te_uid != 0)
++        iwm_awdl_mcc_time_event_cmd(sc, false, 0, 0, 0, false);
++    if (sc->sc_awdl_go) {
++        for (size_t i = 0; i < IWM_AWDL_PEER_MAX; ++i)
++            if (sc->sc_awdl_peer_active[i])
++                iwm_awdl_peer_sta_cmd(
++                    sc, static_cast<uint8_t>(IWM_AWDL_PEER_STA_BASE + i),
++                    sc->sc_awdl_peer_addr[i], false);
++    }
++    memset(sc->sc_awdl_peer_active, 0, sizeof(sc->sc_awdl_peer_active));
++    memset(sc->sc_awdl_peer_addr, 0, sizeof(sc->sc_awdl_peer_addr));
++    iwm_awdl_go_mcast_sta(sc, false);
++    if (sc->sc_awdl_mcc_state & IWM_AWDL_MCC_STA_ACTIVE) {
++        iwm_flush_tx_path(sc, 1U << IWM_AWDL_TXQ(sc));
++        iwm_awdl_mcc_sta_cmd(sc, false);
++        sc->sc_awdl_mcc_state &= ~IWM_AWDL_MCC_STA_ACTIVE;
++    }
++    if (sc->sc_awdl_mcc_state & IWM_AWDL_MCC_QUEUE_ACTIVE) {
++        if (iwm_nic_lock(sc)) {
++            iwm_disable_txq_for_sta(sc, IWM_AWDL_BSTA(sc),
++                                    IWM_AWDL_TXQ(sc),
++                                    IWM_MAX_TID_COUNT, 0);
++            iwm_nic_unlock(sc);
++        }
++        sc->sc_awdl_mcc_state &= ~IWM_AWDL_MCC_QUEUE_ACTIVE;
++    }
++    if (sc->sc_awdl_mcc_state & IWM_AWDL_MCC_BINDING_ACTIVE) {
++        if (sc->sc_awdl_mcc_shared) {
++            if (sc->sc_flags & IWM_FLAG_BINDING_ACTIVE)
++                iwm_awdl_mcc_shared_binding_cmd(sc, false);
++        } else {
++            iwm_awdl_mcc_binding_cmd(sc, IWM_FW_CTXT_ACTION_REMOVE);
++        }
++        sc->sc_awdl_mcc_state &= ~IWM_AWDL_MCC_BINDING_ACTIVE;
++    }
++    if (sc->sc_awdl_mcc_state & IWM_AWDL_MCC_MAC_ACTIVE) {
++        iwm_awdl_mcc_mac_cmd(sc, sc->sc_awdl_mcc_macaddr,
++                             IWM_FW_CTXT_ACTION_REMOVE);
++        sc->sc_awdl_mcc_state &= ~IWM_AWDL_MCC_MAC_ACTIVE;
++    }
++    sc->sc_awdl_mcc_state = 0;
++    sc->sc_awdl_mcc_shared = 0;
++    sc->sc_awdl_mcc_channel = 0;
++    memset(sc->sc_awdl_mcc_macaddr, 0, sizeof(sc->sc_awdl_mcc_macaddr));
++    const bool restoreSf = sc->sc_awdl_sf_forced;
++    sc->sc_awdl_sf_forced = false;
++    if (restoreSf && (sc->sc_flags & (IWM_FLAG_HW_ERR | IWM_FLAG_SHUTDOWN)) == 0) {
++        const bool associated = ic->ic_state == IEEE80211_S_RUN &&
++            (sc->sc_flags & IWM_FLAG_STA_ACTIVE) != 0;
++        iwm_sf_config(sc, associated ? IWM_SF_FULL_ON : IWM_SF_INIT_OFF);
++    }
++    if (ic->ic_state == IEEE80211_S_RUN &&
++        (sc->sc_flags & IWM_FLAG_BINDING_ACTIVE) != 0 &&
++        !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DYNAMIC_QUOTA))
++        iwm_update_quotas(sc, (struct iwm_node *)ic->ic_bss, 1);
++    splx(s);
++}
++
+ int ItlIwm::
+ iwm_update_quotas(struct iwm_softc *sc, struct iwm_node *in, int running)
+ {
+@@ -2245,6 +3435,17 @@ iwm_update_quotas(struct iwm_softc *sc, struct iwm_node *in, int running)
+         if (running)
+             n_ifs[id] = 1;
+     }
++    // itlwm_awdl_go_prequota: a GO binding needs airtime before its broadcast
++    // station schedules TBTT/DTIM, so count it as soon as it is bound.
++    if (!sc->sc_awdl_mcc_shared &&
++        (sc->sc_awdl_mcc_state == IWM_AWDL_MCC_ACTIVE ||
++         (sc->sc_awdl_go_prequota && IWM_AWDL_BEACONING(sc) &&
++          (sc->sc_awdl_mcc_state & IWM_AWDL_MCC_BINDING_ACTIVE)))) {
++        const uint16_t awdl_id = sc->sc_phyctxt[IWM_AWDL_PHY_INDEX].id;
++        KASSERT(awdl_id < IWM_MAX_BINDINGS, "awdl_id < IWM_MAX_BINDINGS");
++        colors[awdl_id] = sc->sc_phyctxt[IWM_AWDL_PHY_INDEX].color;
++        n_ifs[awdl_id] = 1;
++    }
+     
+     /*
+      * The FW's scheduling session consists of
+@@ -2403,6 +3604,9 @@ iwm_deauth(struct iwm_softc *sc)
+     int ac, tfd_queue_msk, err, i;
+     
+     splassert(IPL_NET);
++
++    if (sc->sc_awdl_mcc_state != 0)
++        iwm_awdl_mcc_teardown();
+     
+     iwm_unprotect_session(sc, in);
+     
+@@ -3063,6 +4267,81 @@ int ItlIwm::iwm_media_change(struct _ifnet *ifp)
+     return err;
+ }
+ 
++extern bool itlAWDLBuildVerified();
++
++void ItlIwm::start9560AwDLListener()
++{
++    if (!awdl9560Requested)
++        return;
++    auto *controller = getController();
++    if (!controller)
++        return;
++    if (!itlAWDLBuildVerified()) {
++        controller->setProperty("ITL9560AWDLState", "macOS build not verified");
++        return;
++    }
++
++    auto *sc = &com;
++    auto *ic = &sc->sc_ic;
++    auto *bss = reinterpret_cast<struct iwm_node *>(ic->ic_bss);
++    if (!bss || !bss->in_phyctxt || !bss->in_phyctxt->channel) {
++        controller->setProperty("ITL9560AWDLState", "waiting for an associated channel");
++        return;
++    }
++    const uint16_t channel = ieee80211_chan2ieee(ic, bss->in_phyctxt->channel);
++    controller->setProperty("ITL9560AWDLChannel", channel, 32);
++    if (channel != 44 && channel != 149) {
++        controller->setProperty("ITL9560AWDLState", "waiting for the Wi-Fi connection on channel 44 or 149");
++        return;
++    }
++    const uint32_t flags = iwm_awdl_reg_flags(channel);
++    const uint32_t required = IWM_NVM_CHANNEL_VALID | IWM_NVM_CHANNEL_ACTIVE;
++    if ((flags & (required | IWM_NVM_CHANNEL_RADAR)) != required) {
++        controller->setProperty("ITL9560AWDLState", "firmware does not permit the channel");
++        return;
++    }
++
++    // Keep the infrastructure station on its present PHY. The extra listener MAC
++    // gets a distinct locally administered address and this probe queues no frames.
++    uint8_t address[IEEE80211_ADDR_LEN];
++    IEEE80211_ADDR_COPY(address, ic->ic_myaddr);
++    address[0] |= 0x02;
++    address[IEEE80211_ADDR_LEN - 1] ^= 0x01;
++    iwm_set_awdl_shared_phy(true);
++    uint32_t stage = 0;
++    const int error = iwm_awdl_mcc_configure(address, channel, &stage);
++    if (!error && !iwm_awdl_mcc_shared()) {
++        iwm_awdl_mcc_teardown();
++        controller->setProperty("ITL9560AWDLState", "shared PHY unavailable");
++        return;
++    }
++    controller->setProperty("ITL9560AWDLSetupStage", stage, 32);
++    controller->setProperty("ITL9560AWDLSetupError", static_cast<uint32_t>(error), 32);
++    controller->setProperty("ITL9560AWDLState", error ? "listener configuration failed" : "listening");
++    if (!error) {
++        ic->ic_awdl_rx_arg = this;
++        ic->ic_awdl_rx = count9560AwDLAction;
++        controller->setProperty("ITL9560AWDLActionFrames", awdl9560ActionFrames, 32);
++    }
++}
++
++void ItlIwm::count9560AwDLAction(void *context, const uint8_t *frame, size_t length,
++                                uint8_t channel, int8_t, uint32_t)
++{
++    auto *driver = static_cast<ItlIwm *>(context);
++    if (!driver->iwm_awdl_mcc_active() || channel != driver->com.sc_awdl_mcc_channel)
++        return;
++    ItlAWDL::ActionFrame action;
++    if (ItlAWDL::parseAction(frame, ItlAWDL::trimZeroPadding(frame, length), &action) != ItlAWDL::ParseResult::Valid)
++        return;
++    const uint32_t count = ++driver->awdl9560ActionFrames;
++    // Publish sparingly on the receive path. Keep no payload or peer identity.
++    if (count && (count & (count - 1)) == 0) {
++        if (auto *controller = driver->getController())
++            controller->setProperty("ITL9560AWDLActionFrames", count, 32);
++    }
++}
++
+ void ItlIwm::
+ iwm_newstate_task(void *psc)
+ {
+@@ -3151,8 +4430,10 @@ out:
+     if ((sc->sc_flags & IWM_FLAG_SHUTDOWN) == 0) {
+         if (err)
+             task_add(systq, &sc->init_task);
+-        else
+-            sc->sc_newstate(ic, nstate, arg);
++        else if (sc->sc_newstate(ic, nstate, arg) == 0 &&
++                 ic->ic_state == IEEE80211_S_RUN && nstate == IEEE80211_S_RUN) {
++            that->start9560AwDLListener();
++        }
+     }
+     //        refcnt_rele_wake(&sc->task_refs);
+     splx(s);
+@@ -3324,6 +4605,10 @@ iwm_sf_config(struct iwm_softc *sc, int new_state)
+ {
+     XYLog("%s\n", __FUNCTION__);
+     struct ieee80211com *ic = &sc->sc_ic;
++    // A station reassociation must not re-enable the single-MAC power mode
++    // while the experimental GO/IBSS binding still exists.
++    if (new_state == IWM_SF_FULL_ON && sc->sc_awdl_sf_forced)
++        new_state = IWM_SF_UNINIT;
+     struct iwm_sf_cfg_cmd sf_cmd = {
+         .state = htole32(new_state),
+     };
+@@ -3348,6 +4633,8 @@ iwm_sf_config(struct iwm_softc *sc, int new_state)
+     
+     err = iwm_send_cmd_pdu(sc, IWM_REPLY_SF_CFG_CMD, IWM_CMD_ASYNC,
+                            sizeof(sf_cmd), &sf_cmd);
++    if (err == 0)
++        sc->sc_sf_state = new_state;
+     return err;
+ }
+ 
+@@ -3628,6 +4915,7 @@ _iwm_start_task(OSObject *target, void *arg0, void *arg1, void *arg2, void *arg3
+     }
+     
+     for (;;) {
++        bool awdlMgt = false;
+         /* why isn't this done per-queue? */
+         if (sc->qfullmsk != 0) {
+             ifq_set_oactive(&ifp->if_snd);
+@@ -3638,6 +4926,16 @@ _iwm_start_task(OSObject *target, void *arg0, void *arg1, void *arg2, void *arg3
+         m = mq_dequeue(&ic->ic_mgtq);
+         if (m) {
+             ni = (struct ieee80211_node *)mbuf_pkthdr_rcvif(m);
++            if (mbuf_len(m) >= 29) {
++                const uint8_t *frame = static_cast<const uint8_t *>(mbuf_data(m));
++                awdlMgt = (frame[0] & 0xfc) == 0xd0 &&
++                    frame[24] == 127 && frame[25] == 0x00 &&
++                    frame[26] == 0x17 && frame[27] == 0xf2 &&
++                    frame[28] == 8;
++                if (awdlMgt)
++                    __atomic_add_fetch(&ic->ic_awdl_tx_dequeued, 1U,
++                                       __ATOMIC_RELAXED);
++            }
+             goto sendit;
+         }
+         
+@@ -3675,11 +4973,17 @@ _iwm_start_task(OSObject *target, void *arg0, void *arg1, void *arg2, void *arg3
+             bpf_mtap(ic->ic_rawbpf, m, BPF_DIRECTION_OUT);
+ #endif
+         if (that->iwm_tx(sc, m, ni, ac) != 0) {
++            if (awdlMgt)
++                __atomic_add_fetch(&ic->ic_awdl_tx_failed, 1U,
++                                   __ATOMIC_RELAXED);
+             XYLog("%s %d iwm_tx OUTPUT_ERROR\n", __FUNCTION__, __LINE__);
+             ieee80211_release_node(ic, ni);
+             ifp->netStat->outputErrors++;
+             continue;
+         }
++        if (awdlMgt)
++            __atomic_add_fetch(&ic->ic_awdl_tx_submitted, 1U,
++                               __ATOMIC_RELAXED);
+         ifp->netStat->outputPackets++;
+         
+         if (ifp->if_flags & IFF_UP)
+@@ -3804,6 +5108,8 @@ iwm_watchdog(struct _ifnet *ifp)
+         if (sc->sc_tx_timer[i] > 0) {
+             if (--sc->sc_tx_timer[i] == 0) {
+                 XYLog("%s: device timeout\n", DEVNAME(sc));
++                ++sc->sc_diag_tx_timeouts;
++                sc->sc_diag_tx_timeout_qmask |= 1U << i;
+ #ifdef IWM_DEBUG
+                 that->iwm_nic_error(sc);
+ #endif
+@@ -4249,6 +5555,7 @@ iwm_intr(OSObject *arg, IOInterruptEventSource* sender, int count)
+               ieee80211_state_name[sc->sc_ic.ic_state]);
+ #endif
+         
++        that->iwm_note_sw_error(sc);
+         XYLog("%s: fatal firmware error\n", DEVNAME(sc));
+         if ((sc->sc_flags & IWM_FLAG_SHUTDOWN) == 0)
+             task_add(systq, &sc->init_task);
+@@ -4360,6 +5667,7 @@ iwm_intr_msix(OSObject *object, IOInterruptEventSource* sender, int count)
+               ieee80211_state_name[sc->sc_ic.ic_state]);
+ #endif
+         
++        that->iwm_note_sw_error(sc);
+         XYLog("%s: fatal firmware error\n", DEVNAME(sc));
+         if ((sc->sc_flags & IWM_FLAG_SHUTDOWN) == 0)
+             task_add(systq, &sc->init_task);
+diff --git a/itlwm/hal_iwm/phy.cpp b/itlwm/hal_iwm/phy.cpp
+index 0b494a4..9639ed3 100644
+--- a/itlwm/hal_iwm/phy.cpp
++++ b/itlwm/hal_iwm/phy.cpp
+@@ -450,6 +450,14 @@ iwm_binding_cmd(struct iwm_softc *sc, struct iwm_node *in, uint32_t action)
+     if (phyctxt == NULL) /* XXX race with iwm_stop() */
+         return EINVAL;
+     
++    // A shared-PHY AWDL MAC lives in this binding. Remove it first so the
++    // binding is never torn down under it; the AWDL timer rebuilds MCC later.
++    if (action == IWM_FW_CTXT_ACTION_REMOVE && sc->sc_awdl_mcc_shared &&
++        sc->sc_awdl_mcc_state != 0) {
++        ++sc->sc_awdl_shared_evictions;
++        iwm_awdl_mcc_teardown();
++    }
++
+     memset(&cmd, 0, sizeof(cmd));
+     
+     cmd.id_and_color
+diff --git a/itlwm/hal_iwm/rx.cpp b/itlwm/hal_iwm/rx.cpp
+index ba1ca90..0f4e464 100644
+--- a/itlwm/hal_iwm/rx.cpp
++++ b/itlwm/hal_iwm/rx.cpp
+@@ -1336,14 +1336,39 @@ iwm_rx_pkt(struct iwm_softc *sc, struct iwm_rx_data *data, struct mbuf_list *ml)
+                 
+             case IWM_TIME_EVENT_NOTIFICATION: {
+                 struct iwm_time_event_notif *notif;
+-                uint32_t action;
++                uint32_t action, id_and_color, uid;
+                 SYNC_RESP_STRUCT(notif, pkt, struct iwm_time_event_notif *);
+                 if (!IWM_NOTIF_FITS(pkt, struct iwm_time_event_notif))
+                     break;
+-                
+-                if (sc->sc_time_event_uid != le32toh(notif->unique_id))
+-                    break;
++
++                uid = le32toh(notif->unique_id);
+                 action = le32toh(notif->action);
++                id_and_color = le32toh(notif->id_and_color);
++                const bool pending_awdl = sc->sc_awdl_te_pending != 0 &&
++                    id_and_color == IWM_FW_CMD_ID_AND_COLOR(
++                        IWM_AWDL_MAC_INDEX, 0);
++                if ((sc->sc_awdl_te_uid != 0 &&
++                     sc->sc_awdl_te_uid == uid) || pending_awdl) {
++                    if (pending_awdl)
++                        sc->sc_awdl_te_uid = uid;
++                    sc->sc_awdl_te_last_status = le32toh(notif->status);
++                    sc->sc_awdl_te_last_timestamp =
++                        le32toh(notif->timestamp);
++                    if (action & IWM_TE_V2_NOTIF_HOST_EVENT_START) {
++                        sc->sc_awdl_te_active = 1;
++                        sc->sc_awdl_te_starts++;
++                    }
++                    if (action & IWM_TE_V2_NOTIF_HOST_EVENT_END) {
++                        sc->sc_awdl_te_active = 0;
++                        sc->sc_awdl_te_ends++;
++                    }
++                    IOLog("itlwm: AWDL_TE_V1 notif uid=%u action=0x%x status=%u gp2=%u\n",
++                          uid, action, sc->sc_awdl_te_last_status,
++                          sc->sc_awdl_te_last_timestamp);
++                    break;
++                }
++                if (sc->sc_time_event_uid != uid)
++                    break;
+                 if (action & IWM_TE_V2_NOTIF_HOST_EVENT_END)
+                     sc->sc_flags &= ~IWM_FLAG_TE_ACTIVE;
+                 break;
+diff --git a/itlwm/hal_iwm/tx.cpp b/itlwm/hal_iwm/tx.cpp
+index 20447fd..fb8fbf6 100644
+--- a/itlwm/hal_iwm/tx.cpp
++++ b/itlwm/hal_iwm/tx.cpp
+@@ -394,13 +394,14 @@ iwm_enable_txq(struct iwm_softc *sc, int sta_id, int qid, int fifo, int ssn, int
+ }
+ 
+ int ItlIwm::
+-iwm_disable_txq(struct iwm_softc *sc, uint8_t qid, uint8_t tid, uint8_t flags)
++iwm_disable_txq_for_sta(struct iwm_softc *sc, uint8_t sta_id, uint8_t qid,
++                        uint8_t tid, uint8_t flags)
+ {
+     int err;
+     struct iwm_scd_txq_cfg_cmd cmd = {
+         .scd_queue = qid,
+         .enable = IWM_SCD_CFG_DISABLE_QUEUE,
+-        .sta_id = IWM_STATION_ID,
++        .sta_id = sta_id,
+         .tid = tid,
+     };
+     
+@@ -409,6 +410,12 @@ iwm_disable_txq(struct iwm_softc *sc, uint8_t qid, uint8_t tid, uint8_t flags)
+     return err;
+ }
+ 
++int ItlIwm::
++iwm_disable_txq(struct iwm_softc *sc, uint8_t qid, uint8_t tid, uint8_t flags)
++{
++    return iwm_disable_txq_for_sta(sc, IWM_STATION_ID, qid, tid, flags);
++}
++
+ int ItlIwm::
+ iwm_send_soc_conf(struct iwm_softc *sc)
+ {
+@@ -462,6 +469,8 @@ iwm_send_update_mcc_cmd(struct iwm_softc *sc, const char *alpha2)
+     struct iwm_rx_packet *pkt;
+     size_t resp_len;
+     int err;
++    const uint32_t *channel_flags = NULL;
++    uint32_t channel_count = 0;
+     int resp_v3 = isset(sc->sc_enabled_capa,
+                         IWM_UCODE_TLV_CAPA_LAR_SUPPORT_V3);
+     
+@@ -503,11 +512,13 @@ iwm_send_update_mcc_cmd(struct iwm_softc *sc, const char *alpha2)
+         }
+         
+         resp = (struct iwm_mcc_update_resp_v3 *)pkt->data;
+-        if (resp_len != sizeof(*resp) +
+-            resp->n_channels * sizeof(resp->channels[0])) {
++        channel_count = le32toh(resp->n_channels);
++        if (channel_count != (resp_len - sizeof(*resp)) / sizeof(resp->channels[0]) ||
++            (resp_len - sizeof(*resp)) % sizeof(resp->channels[0]) != 0) {
+             err = EIO;
+             goto out;
+         }
++        channel_flags = resp->channels;
+     } else {
+         struct iwm_mcc_update_resp_v1 *resp_v1;
+         resp_len = iwm_rx_packet_payload_len(pkt);
+@@ -517,11 +528,29 @@ iwm_send_update_mcc_cmd(struct iwm_softc *sc, const char *alpha2)
+         }
+         
+         resp_v1 = (struct iwm_mcc_update_resp_v1 *)pkt->data;
+-        if (resp_len != sizeof(*resp_v1) +
+-            resp_v1->n_channels * sizeof(resp_v1->channels[0])) {
++        channel_count = le32toh(resp_v1->n_channels);
++        if (channel_count != (resp_len - sizeof(*resp_v1)) / sizeof(resp_v1->channels[0]) ||
++            (resp_len - sizeof(*resp_v1)) % sizeof(resp_v1->channels[0]) != 0) {
+             err = EIO;
+             goto out;
+         }
++        channel_flags = resp_v1->channels;
++    }
++    {
++        const bool extended = sc->sc_device_family >= IWM_DEVICE_FAMILY_8000;
++        const uint8_t *channels = extended ? iwm_nvm_channels_8000 : iwm_nvm_channels;
++        const size_t maximum = extended ? nitems(iwm_nvm_channels_8000) : nitems(iwm_nvm_channels);
++        if (channel_count == 0 || channel_count > maximum) {
++            // Optional AWDL diagnostics must not reject an otherwise valid
++            // MCC response during infrastructure firmware initialization.
++            sc->sc_awdl_reg_count = 0;
++            memset(sc->sc_awdl_reg_flags, 0, sizeof(sc->sc_awdl_reg_flags));
++            goto out;
++        }
++        memset(sc->sc_awdl_reg_flags, 0, sizeof(sc->sc_awdl_reg_flags));
++        for (uint32_t i = 0; i < channel_count; ++i)
++            sc->sc_awdl_reg_flags[channels[i]] = le32toh(channel_flags[i]) & 0xffff;
++        sc->sc_awdl_reg_count = channel_count;
+     }
+ out:
+     iwm_free_resp(sc, &hcmd);
+diff --git a/tools/build.py b/tools/build.py
+index 732dec9..41b6bb3 100644
+--- a/tools/build.py
++++ b/tools/build.py
+@@ -13,7 +13,7 @@ NAME='ForbiddenItlwm';ID='org.forbiddenitlwm.ForbiddenItlwm';VER='0.6.0'
+ # Per macOS target: the IO80211 header set, the build marker, and which version header directory stays off the quote path.
+ TARGETS={
+     'tahoe':dict(io80211='__MAC_26_0',marker='forbidden-0.6.0-beta.2',skip=('macOS15','macOS14')),
+-    'sequoia':dict(io80211='__MAC_15_2',marker='forbidden-0.6.0-beta.2-sequoia',skip=('macOS15','macOS26','macOS14')),
++    'sequoia':dict(io80211='__MAC_15_2',marker='forbidden-0.6.0-iwm9560-sequoia-probe',skip=('macOS15','macOS26','macOS14')),
+     # Sonoma 14.4 and later: IO80211FamilyV2 without WCL, as upstream's AirportItlwm-Sonoma14.4 target.
+     'sonoma':dict(io80211='__MAC_14_4',marker='forbidden-0.6.0-beta.2-sonoma',skip=('macOS15','macOS26','macOS14'),wcl=False),
+ }

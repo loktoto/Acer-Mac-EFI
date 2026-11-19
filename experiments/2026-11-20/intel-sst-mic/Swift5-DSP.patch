@@ -1,0 +1,127 @@
+--- a/kext/TGLDmic/DspBoot.cpp
++++ b/kext/TGLDmic/DspBoot.cpp
+@@ -26,6 +26,9 @@
+ constexpr uint16_t CL_FORMAT = 0x40;
+ constexpr uint32_t ROM_IPC_CONTROL = 0x01000000, ROM_IPC_PURGE_FW = 0x00004000;
+ constexpr uint32_t FSR_MASK = 0x00FFFFFF, FSR_INIT_DONE = 0x1, FSR_FW_ENTERED = 0x5;
++constexpr uint32_t PPCTL_GLOBAL_PROCESSING_ENABLE = 1u << 30;
++constexpr uint32_t WHISKEY_LAKE_AUDIO_PCI_ID = 0x9DC88086;
++constexpr uint32_t SWIFT5_AUDIO_SUBSYSTEM_ID = 0x13121025;
+ constexpr uint32_t CORE0 = 1;                                         // init_core_mask
+ inline uint32_t SPA(uint32_t m) { return m << 16; }
+ inline uint32_t CPA(uint32_t m) { return m << 24; }
+@@ -81,6 +84,13 @@
+     } else {
+         if (!gatingOff) return;
+         gatingOff = false;
++        if (ownsGlobalProcessingEnable) {
++            uint32_t ppctl = r32(ppOffset + HDA::PP_PPCTL);
++            if (ppctl != 0xFFFFFFFF) {
++                w32(ppOffset + HDA::PP_PPCTL, ppctl & ~PPCTL_GLOBAL_PROCESSING_ENABLE);
++            }
++            ownsGlobalProcessingEnable = false;
++        }
+         pci->configWrite32(PCI_PGCTL, savedPgctl);
+         w32(HDA_EM2, savedEm2);
+         pci->configWrite32(PCI_CGCTL, savedCgctl);
+@@ -201,6 +211,59 @@
+     return (platformFamily == kPlatformCometLake) ? 0x0F : CORE0;
+ }
+ 
++bool TGLDmic::prepareSwift5Dsp() {
++    uint32_t enabled = 0;
++    if (pciId != WHISKEY_LAKE_AUDIO_PCI_ID ||
++        pci->configRead32(kIOPCIConfigSubSystemVendorID) != SWIFT5_AUDIO_SUBSYSTEM_ID ||
++        platformFamily != kPlatformCometLake ||
++        !PE_parse_boot_argn("tgldmicacerfix", &enabled, sizeof(enabled)) || enabled != 1) {
++        return true;
++    }
++
++    const uint32_t ppctlOffset = ppOffset + HDA::PP_PPCTL;
++    const uint32_t ppctl = r32(ppctlOffset);
++    if (ppctl == 0xFFFFFFFF) {
++        fail("Acer DSP processing control unreadable", ppctl);
++        return false;
++    }
++    if (ppctl & PPCTL_GLOBAL_PROCESSING_ENABLE) return true;
++
++    uint32_t control = d32(DSP::ADSPCS);
++    if (control == 0xFFFFFFFF || (control & CPA(0xFF))) {
++        fail("Acer DSP unavailable or already powered", control);
++        return false;
++    }
++
++    // The Swift 5 can leave the processing block disabled with stale DSP power requests.
++    w32(ppctlOffset, ppctl | PPCTL_GLOBAL_PROCESSING_ENABLE);
++    ownsGlobalProcessingEnable = true;
++    if (!pollHda(ppctlOffset, PPCTL_GLOBAL_PROCESSING_ENABLE,
++                 PPCTL_GLOBAL_PROCESSING_ENABLE, 1000, &control)) {
++        fail("Acer DSP processing enable", control);
++        return false;
++    }
++    control = d32(DSP::ADSPCS);
++    if (control == 0xFFFFFFFF || (control & CPA(0xFF))) {
++        fail("Acer DSP unavailable after processing enable", control);
++        return false;
++    }
++
++    const uint32_t mask = targetCoreMask();
++    dw32(DSP::ADSPCS, control | CSTALL(mask));
++    dw32(DSP::ADSPCS, d32(DSP::ADSPCS) | CRST(mask));
++    if (!pollDsp(DSP::ADSPCS, CRST(mask), CRST(mask), 50000, &control)) {
++        fail("Acer DSP reset", control);
++        return false;
++    }
++    dw32(DSP::ADSPCS, control & ~SPA(mask));
++    if (!pollDsp(DSP::ADSPCS, SPA(mask) | CPA(mask), 0, 50000, &control)) {
++        fail("Acer DSP clear stale power requests", control);
++        return false;
++    }
++    LOG("boot: Acer DSP processing enabled and cores reset, ADSPCS 0x%08x", control);
++    return true;
++}
++
+ bool TGLDmic::corePowerUp() {
+     uint32_t mask = targetCoreMask();
+     dw32(DSP::ADSPCS, d32(DSP::ADSPCS) | SPA(mask));
+@@ -325,8 +388,11 @@
+     setNoSnoop(true);
+     gating(false);
+     bool ok = false;
++    bool loaderTouched = false;
+     uint32_t v = 0;
+     do {
++        if (!prepareSwift5Dsp()) break;
++        loaderTouched = true;
+         if (!prepareLoaderStream(idx, tag, fwBytes)) break;
+         // cl_dsp_init step 1..4
+         if (!corePowerUp()) break;
+@@ -388,7 +454,7 @@
+         ok = true;
+     } while (false);
+ 
+-    releaseLoaderStream(idx);
++    if (loaderTouched) releaseLoaderStream(idx);
+     clBuf.release(); bdlBuf.release();
+     if (ok) {
+         snprintf(bootResult, sizeof(bootResult), "OK FW_READY");
+@@ -396,7 +462,7 @@
+         LOG("boot: SUCCESS - SOF firmware running (FW_READY)");
+         if (captureRequested) captureTest();
+         if (!keepRunning) corePowerDown();
+-    } else {
++    } else if (loaderTouched) {
+         corePowerDown();
+     }
+     bool stayUp = ok && keepRunning;               // service mode: DSP keeps running, gating stays off
+--- a/kext/TGLDmic/TGLDmic.hpp
++++ b/kext/TGLDmic/TGLDmic.hpp
+@@ -102,6 +102,8 @@
+     bool prepareLoaderStream(uint32_t globalIndex, uint32_t tag, size_t fwBytes);
+     void releaseLoaderStream(uint32_t globalIndex);
+     void gating(bool enable);
++    bool prepareSwift5Dsp();
++    bool ownsGlobalProcessingEnable {false};
+     uint32_t targetCoreMask() const;
+     bool corePowerUp();
+     bool coreRun();

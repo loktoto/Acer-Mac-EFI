@@ -2,19 +2,23 @@
 
 # Acer Swift 5 SF514-53T Hackintosh — Diagnostics & Execution Plan
 
-> Machine: Acer Swift 5 SF514-53T (Whiskey Lake, i5-8265U, UHD 620)
+> Machine: Acer Swift 5 SF514-53T (Whiskey Lake, i7-8565U, UHD 620)
 > Dual boot: macOS (OpenCore) + Windows 11
 > Compiled: 2026-11-18
-> Status: Boot menu cleanup DONE. Internal mic fix — plan ready, not yet executed.
+> Status as of 2026-11-20: internal OpenCore boots and speakers work with AppleALC layout 71. The USB test confirmed a DSP power-up failure with stock TGLDmic 0.5.0.
 
 ---
 
-## 1. Machine profile (verified from Windows DeviceSnapshot.txt)
+## Current testing
+
+[November 20 USB test runbook and downloads](experiments/2026-11-20/README.md) includes the Acer SST microphone test patch, an Intel AC 9560 AWDL receive prototype for Sequoia 15.8.3, and the Wi-Fi wake/reconnect findings. The microphone patch and AWDL prototype have passed offline checks and await USB hardware testing. Test the microphone first to retain a known audio and network baseline.
+
+## 1. Machine profile
 
 | Component | Detail | Source |
 |---|---|---|
 | Model | Acer Swift 5 SF514-53T | driver package in workspace |
-| CPU | Intel Core i5-8265U (Whiskey Lake, 8th gen) | DeviceSnapshot |
+| CPU | Intel Core i7-8565U (Whiskey Lake, 8th gen) | macOS `sysctl` |
 | iGPU | Intel UHD 620 | DeviceSnapshot |
 | Audio codec | Realtek ALC255 (`VEN_10EC&DEV_0255`, subsystem Acer `10251312`) | DeviceSnapshot |
 | Audio bus/controller | Intel HD Audio `VEN_8086&DEV_AE20` | DeviceSnapshot |
@@ -105,9 +109,9 @@ Both are ALC255 HDA layouts; they do not touch the SST DSP path. Expected failur
 
 Compatibility (from official INSTALL.md):
 - Supported DSP: `8086:9DC8` = **Cannon Lake / Whiskey Lake LP** ← matches this machine
-- Supported CPUs explicitly include **Whiskey Lake i7-8565U / i5-8265U** ← i5-8265U matches
+- Supported CPUs explicitly include **Whiskey Lake i7-8565U / i5-8265U** ← i7-8565U matches
 - Runs alongside AppleALC/AppleHDA — speakers + headset unaffected; adds a new input
-- Tested: Ventura, Tahoe. Sonoma/Sequoia not yet verified.
+- Upstream lists Ventura and Tahoe tests. On Sequoia 15.8.3, the Acer USB test loaded the driver and stopped at DSP power-up.
 - Latest release: **v0.5.0** (2026-10-30, added Comet Lake support)
 
 Risk: not tested on Acer SF514-53T specifically; experimental. Fully removable.
@@ -120,7 +124,9 @@ Risk: not tested on Acer SF514-53T specifically; experimental. Fully removable.
 
 ---
 
-## 6. Final execution plan (all done inside macOS)
+## 6. Original execution plan
+
+Use the [current USB test runbook](experiments/2026-11-20/README.md) for this Acer. The steps below record the original stock-driver plan.
 
 ### Phase 0 — Prepare
 1. Boot into macOS via F12 → OpenCore Internal.
