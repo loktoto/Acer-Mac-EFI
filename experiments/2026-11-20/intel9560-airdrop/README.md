@@ -6,6 +6,7 @@ The USB test machine is the Acer Swift 5 SF514-53T, running macOS Sequoia 15.8.3
 | --- | --- | --- |
 | Queue | Booted on the Acer with native Wi-Fi. The larger AWDL transmit queue and retry handling reduced queue drops in the observed test. Use this build to reproduce the verified setup. | [Kext](Intel9560-AirDrop-Sequoia-queue.zip) · [Source patch](acer-ac9560-awdl-queue.patch) |
 | Dwell | Experimental follow-up. Sends eligible pending unicast frames during an already scheduled shared radio window. Build, signature and OpenCore validation passed before boot testing. | [Kext](Intel9560-AirDrop-Sequoia-dwell.zip) · [Source patch](acer-ac9560-awdl-dwell.patch) |
+| Dwell, AC 9560 firmware only | Experimental boot-time test. Uses the same dwell source and byte-identical `iwm-9000-46` firmware, with other adapters' firmware omitted. The signed executable is 2.7 MB, down from 19.8 MB. Boot timing and AirDrop throughput on this build are pending hardware validation. | [Kext](Intel9560-AirDrop-Sequoia-dwell-ac9560.zip) |
 | Station order | Earlier working AirDrop build. Sets up Intel 9000-series firmware queues before adding the AWDL station and bounds retries after an AWDL firmware fault. | [Kext](Intel9560-AirDrop-Sequoia-station-order.zip) · [Source patch](acer-ac9560-awdl-station-order.patch) |
 
 [Complete AirportItlwm dwell source and SDK](Intel9560-AirDrop-Sequoia-source.tar.gz) · [BlueToolFixup 2.7.4 kext](BlueToolFixup-AirDrop-2.7.4.zip) · [BlueToolFixup source](BlueToolFixup-AirDrop-2.7.4-source.tar.gz) · [SHA-256 checksums](SHA256SUMS)
@@ -35,3 +36,15 @@ codesign --force --sign - build/products/Debug/Sequoia/AirportItlwm.kext
 ```
 
 The packaged Bluetooth binary comes from the [Eric-BlueToolFixup 2.7.4 Debug release](https://github.com/Ersiter/Eric-BlueToolFixup/releases/tag/2.7.4), with a local ad hoc signature. Its [upstream source](https://github.com/Ersiter/Eric-BlueToolFixup/tree/f77153515c3a46fa10bff1056847a7c6c336e4d3) is also archived above.
+
+## AC 9560 boot timing test
+
+Build from a fresh copy of the complete dwell source archive. Immediately before running `xcodebuild`, generate `FwBinary.cpp` with the single firmware file selected by the 9560 driver's PCI match. The upstream build phase reuses this generated file when it is newer than the firmware inputs. Use a separate source copy for the full-firmware build.
+
+```sh
+firmware_dir=$(mktemp -d)
+cp itlwm/firmware/iwm-9000-46 "$firmware_dir/"
+python3 scripts/zlib_compress_fw.py include/FwBinary.cpp "$firmware_dir"
+```
+
+After building, confirm `include/FwBinary.cpp` still contains `const int fwNumber = 1;`. The USB timing test sets `Misc > Debug > Target` to `0` to disable OpenCore boot logging. Time both intervals on the same USB followed by the same macOS entry. Record selection to Apple logo and Apple logo to login screen. The existing queue build is the hardware-tested fallback.
