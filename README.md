@@ -11,7 +11,7 @@
 
 ## Current testing
 
-[November 20 USB test runbook and downloads](experiments/2026-11-20/README.md) includes the Acer SST microphone test patch, an Intel AC 9560 AWDL receive prototype for Sequoia 15.8.3, and the Wi-Fi wake/reconnect findings. The microphone patch and AWDL prototype have passed offline checks and await USB hardware testing. Test the microphone first to retain a known audio and network baseline.
+The [November 20 USB test runbook](experiments/2026-11-20/README.md) covers the Acer SST microphone fix and Wi-Fi wake findings. The [Intel AC 9560 AirDrop downloads](experiments/2026-11-20/intel9560-airdrop/README.md) include a bidirectional AirDrop build tested on Sequoia 15.8.3, its rollback build, and a newer experimental build.
 
 ## 1. Machine profile
 

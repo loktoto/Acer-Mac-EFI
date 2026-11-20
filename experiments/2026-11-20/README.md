@@ -4,7 +4,7 @@ Test machine and OS were an Intel Core i7-8565U and macOS Sequoia 15.8.3 (`24H24
 
 ## Start with the internal microphone
 
-Stock TGLDmic 0.5.0 finds the Intel `8086:9DC8` controller, then reports `FAIL core0 power up (CPA) (0x001c003c)` before firmware starts. The Acer test build enables the DSP processing block and clears stale power requests. It is opt-in on `8086:9DC8` with Acer subsystem `1025:1312`. The build has passed compilation and a local signature check. DSP boot and microphone capture with this patch still require hardware verification.
+Stock TGLDmic 0.5.0 finds the Intel `8086:9DC8` controller, then reports `FAIL core0 power up (CPA) (0x001c003c)` before firmware starts. The Acer build enables the DSP processing block and clears stale power requests. It is opt-in on `8086:9DC8` with Acer subsystem `1025:1312`. On the SanDisk boot, the DSP reported firmware ready, the owner verified speech input in Google, and speaker playback remained normal.
 
 1. Save your work and back up the working SanDisk `EFI/OC` folder. On the **SanDisk** OpenCore test configuration, replace `Kexts/TGLDmic.kext` with the [Acer test build](intel-sst-mic/Swift5-TGLDmic-0.5.0-test.zip). Keep its existing enabled `Kernel > Add` entry after AppleALC.
 2. On that USB configuration, append `tgldmicacerfix=1` to `boot-args`. Keep `-tgldmic`, `tgldmicdelay=90`, and AppleALC layout 71. Validate the configuration with the `ocvalidate` version matching the USB's OpenCore build.
@@ -21,7 +21,11 @@ If speaker playback or boot fails, shut down, remove the SanDisk, and use the in
 
 To rebuild the microphone test kext, extract the source archive and run `make -C kext SDK="$PWD/MacKernelSDK"` from its root on an Intel Mac with Xcode command-line tools.
 
-## Intel AC 9560 AirDrop receive prototype
+## Intel AC 9560 AirDrop
+
+The [bidirectional AirDrop downloads, source and USB settings](intel9560-airdrop/README.md) describe the builds that followed the receive-only prototype. The queue build was tested on the Acer with transfers in both directions and native Wi-Fi. Start with that build for USB testing.
+
+### Earlier receive-only prototype
 
 The Sequoia build targets Intel AC 9560 `8086:9DF0` with subsystem `8086:0034`. On a separate test configuration, it attempts same-channel AWDL reception on channel 44 or 149 when the card's firmware permits it. Compilation, signing, and offline parser and bridge checks passed. Radio reception and ordinary Wi-Fi stability have not been verified on hardware. Finder transfers still need a transmit path and an end-to-end test.
 
