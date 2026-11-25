@@ -9,6 +9,10 @@
 
 ---
 
+## Stable daily EFI
+
+The Acer Swift 5 SF514-53T daily EFI profile uses OpenCore 1.0.9 on Sequoia 15.8.3. The profile includes a configuration template, boot-file checksums and hardware verification notes. [Stable EFI profile](stable/SF514-53T-Sequoia-15.8.3/README.md)
+
 ## Current testing
 
 The [November 20 USB test runbook](experiments/2026-11-20/README.md) covers the Acer SST microphone fix and Wi-Fi wake findings. The [Intel AC 9560 AirDrop downloads](experiments/2026-11-20/intel9560-airdrop/README.md) include a bidirectional AirDrop build tested on Sequoia 15.8.3, its rollback build, and a newer experimental build.
