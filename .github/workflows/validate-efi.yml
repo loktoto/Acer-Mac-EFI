@@ -1,0 +1,42 @@
+name: Validate EFI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify published archives
+        run: |
+          for manifest in experiments/*/*/SHA256SUMS; do
+            (cd "$(dirname "$manifest")" && sha256sum --check --strict SHA256SUMS)
+          done
+
+      - name: Validate stable OpenCore profile
+        run: |
+          archive="$RUNNER_TEMP/OpenCore-1.0.9-DEBUG.zip"
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            --output "$archive" \
+            https://github.com/dortania/build-repo/releases/download/OpenCorePkg-ebea824/OpenCore-1.0.9-DEBUG.zip
+          printf '%s  %s\n' 9859b77943b5e17b9667525a464063d703323431551910321adc9e02311a06bd "$archive" \
+            | sha256sum --check --strict
+
+          python3 scripts/validate-efi.py "$archive"
+          unzip -p "$archive" Utilities/ocvalidate/ocvalidate.linux > "$RUNNER_TEMP/ocvalidate"
+          chmod +x "$RUNNER_TEMP/ocvalidate"
+          "$RUNNER_TEMP/ocvalidate" stable/SF514-53T-Sequoia-15.8.3/config.plist
