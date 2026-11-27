@@ -1,0 +1,16 @@
+# Large disassembly dumps and built probe binaries stay local.
+biometrickitd-x86_64.asm
+coreauthd-x86_64.asm
+*.dylib
+biometry-probe
+gestalt-probe
+la-force-test
+sep-layer2-probe/probe
+sep-layer2-probe/feed
+fake-bridge-probe/la-probe
+touchid-icon-kit/coreauthd-force-test
+touchid-icon-kit/delay-test
+touchid-icon-kit/agent/coreautha.bundle
+touchid-icon-kit/agent/*.out
+touchid-icon-kit/agent/*.err
+touchid-icon-kit/daemon

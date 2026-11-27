@@ -1,0 +1,1189 @@
+=== dylib loaded pid=13516 ===
+swizzled sendMessage
+swizzled setupConnection
+server class=0x10df698a8
+HOOK setupConnection (no-op)
+HOOK sendMessage envelope=(
+    2
+)
+   -> fabricated reply=(
+    1,
+    1
+)
+HOOK sendMessage envelope=(
+    0
+)
+   -> fabricated reply=(
+    1,
+    1
+)
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2c0001000000},
+    0
+)
+   -> CMD=44 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+server instance=<BiometricKitXPCServerMesa: 0x7fa1c93043c0>
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d010001000000},
+    128
+)
+   -> CMD=1 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x03000000}
+)
+CMD 1 -> rc=0 outSize=4 first4=03000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d020001000000},
+    128
+)
+   -> CMD=2 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 2 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d030001000000},
+    128
+)
+   -> CMD=3 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 3 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d040001000000},
+    128
+)
+   -> CMD=4 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 4 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d050001000000},
+    128
+)
+   -> CMD=5 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 5 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d060001000000},
+    128
+)
+   -> CMD=6 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 6 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d070001000000},
+    128
+)
+   -> CMD=7 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 7 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d080001000000},
+    128
+)
+   -> CMD=8 reply length=3060
+   -> fabricated reply=(
+    0,
+    {length = 3060, bytes = 0x00000000 00000000 00000000 00000000 ... 00000000 00000000 }
+)
+CMD 8 -> rc=0 outSize=3060 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d090001000000},
+    128
+)
+   -> CMD=9 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 9 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0a0001000000},
+    128
+)
+   -> CMD=10 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 10 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0b0001000000},
+    128
+)
+   -> CMD=11 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 11 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0c0001000000},
+    128
+)
+   -> CMD=12 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 12 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0d0001000000},
+    128
+)
+   -> CMD=13 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 13 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0e0001000000},
+    128
+)
+   -> CMD=14 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 14 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d0f0001000000},
+    128
+)
+   -> CMD=15 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x00000000}
+)
+CMD 15 -> rc=0 outSize=4 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d100001000000},
+    128
+)
+   -> CMD=16 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x00000000}
+)
+CMD 16 -> rc=0 outSize=4 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d110001000000},
+    128
+)
+   -> CMD=17 reply length=3060
+   -> fabricated reply=(
+    0,
+    {length = 3060, bytes = 0x00000000 00000000 00000000 00000000 ... 00000000 00000000 }
+)
+CMD 17 -> rc=0 outSize=3060 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d120001000000},
+    128
+)
+   -> CMD=18 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 18 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d130001000000},
+    128
+)
+   -> CMD=19 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 19 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d140001000000},
+    128
+)
+   -> CMD=20 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 20 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d150001000000},
+    128
+)
+   -> CMD=21 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 21 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d160001000000},
+    128
+)
+   -> CMD=22 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 22 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d170001000000},
+    128
+)
+   -> CMD=23 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 23 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d180001000000},
+    128
+)
+   -> CMD=24 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 24 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d190001000000},
+    128
+)
+   -> CMD=25 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 25 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1a0001000000},
+    128
+)
+   -> CMD=26 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 26 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1b0001000000},
+    128
+)
+   -> CMD=27 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 27 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1c0001000000},
+    128
+)
+   -> CMD=28 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 28 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1d0001000000},
+    128
+)
+   -> CMD=29 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 29 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1e0001000000},
+    128
+)
+   -> CMD=30 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 30 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d1f0001000000},
+    128
+)
+   -> CMD=31 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x00000000}
+)
+CMD 31 -> rc=0 outSize=4 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d200001000000},
+    128
+)
+   -> CMD=32 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 32 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d210001000000},
+    128
+)
+   -> CMD=33 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 33 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d220001000000},
+    128
+)
+   -> CMD=34 reply length=17
+   -> fabricated reply=(
+    0,
+    {length = 17, bytes = 0x0000000000000000000000000000000000}
+)
+CMD 34 -> rc=0 outSize=17 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d230001000000},
+    128
+)
+   -> CMD=35 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 35 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d240001000000},
+    128
+)
+   -> CMD=36 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 36 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d250001000000},
+    128
+)
+   -> CMD=37 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 37 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d260001000000},
+    128
+)
+   -> CMD=38 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 38 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d270001000000},
+    128
+)
+   -> CMD=39 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x00000000}
+)
+CMD 39 -> rc=0 outSize=4 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d280001000000},
+    128
+)
+   -> CMD=40 reply length=23
+   -> fabricated reply=(
+    0,
+    {length = 23, bytes = 0x0000000000000000000000000000000000000000000000}
+)
+CMD 40 -> rc=0 outSize=23 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d290001000000},
+    128
+)
+   -> CMD=41 reply length=16
+   -> fabricated reply=(
+    0,
+    {length = 16, bytes = 0x00000000000000000000000000000000}
+)
+CMD 41 -> rc=0 outSize=16 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2a0001000000},
+    128
+)
+   -> CMD=42 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 42 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2b0001000000},
+    128
+)
+   -> CMD=43 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 43 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2c0001000000},
+    128
+)
+   -> CMD=44 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 44 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2d0001000000},
+    128
+)
+   -> CMD=45 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 45 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2e0001000000},
+    128
+)
+   -> CMD=46 reply length=32
+   -> fabricated reply=(
+    0,
+    {length = 32, bytes = 0x00000000 00000000 00000000 00000000 ... 00000000 00000000 }
+)
+CMD 46 -> rc=0 outSize=32 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d2f0001000000},
+    128
+)
+   -> CMD=47 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 47 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d300001000000},
+    128
+)
+   -> CMD=48 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 48 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d310001000000},
+    128
+)
+   -> CMD=49 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 49 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d320001000000},
+    128
+)
+   -> CMD=50 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 50 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d330001000000},
+    128
+)
+   -> CMD=51 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 51 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d340001000000},
+    128
+)
+   -> CMD=52 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 52 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d350001000000},
+    128
+)
+   -> CMD=53 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 53 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d360001000000},
+    128
+)
+   -> CMD=54 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 54 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d370001000000},
+    128
+)
+   -> CMD=55 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 55 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d380001000000},
+    128
+)
+   -> CMD=56 reply length=16
+   -> fabricated reply=(
+    0,
+    {length = 16, bytes = 0x00000000000000000000000000000000}
+)
+CMD 56 -> rc=0 outSize=16 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d390001000000},
+    128
+)
+   -> CMD=57 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 57 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3a0001000000},
+    128
+)
+   -> CMD=58 reply length=33
+   -> fabricated reply=(
+    0,
+    {length = 33, bytes = 0x00000000 00000000 00000000 00000000 ... 00000000 00000000 }
+)
+CMD 58 -> rc=0 outSize=33 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3b0001000000},
+    128
+)
+   -> CMD=59 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 59 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3c0001000000},
+    128
+)
+   -> CMD=60 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 60 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3d0001000000},
+    128
+)
+   -> CMD=61 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 61 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3e0001000000},
+    128
+)
+   -> CMD=62 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 62 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d3f0001000000},
+    128
+)
+   -> CMD=63 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 63 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d400001000000},
+    128
+)
+   -> CMD=64 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 64 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d410001000000},
+    128
+)
+   -> CMD=65 reply length=4
+   -> fabricated reply=(
+    0,
+    {length = 4, bytes = 0x00000000}
+)
+CMD 65 -> rc=0 outSize=4 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d420001000000},
+    128
+)
+   -> CMD=66 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 66 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d430001000000},
+    128
+)
+   -> CMD=67 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 67 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d440001000000},
+    128
+)
+   -> CMD=68 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 68 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d450001000000},
+    128
+)
+   -> CMD=69 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 69 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d460001000000},
+    128
+)
+   -> CMD=70 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 70 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d470001000000},
+    128
+)
+   -> CMD=71 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 71 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d480001000000},
+    128
+)
+   -> CMD=72 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 72 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d490001000000},
+    128
+)
+   -> CMD=73 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 73 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4a0001000000},
+    128
+)
+   -> CMD=74 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 74 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4b0001000000},
+    128
+)
+   -> CMD=75 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 75 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4c0001000000},
+    128
+)
+   -> CMD=76 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 76 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4d0001000000},
+    128
+)
+   -> CMD=77 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 77 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4e0001000000},
+    128
+)
+   -> CMD=78 reply length=29
+   -> fabricated reply=(
+    0,
+    {length = 29, bytes = 0x00000000 00000000 00000000 00000000 ... 00000000 00000000 }
+)
+CMD 78 -> rc=0 outSize=29 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d4f0001000000},
+    128
+)
+   -> CMD=79 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 79 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d500001000000},
+    128
+)
+   -> CMD=80 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 80 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d510001000000},
+    128
+)
+   -> CMD=81 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 81 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d520001000000},
+    128
+)
+   -> CMD=82 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 82 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d530001000000},
+    128
+)
+   -> CMD=83 reply length=1
+   -> fabricated reply=(
+    0,
+    {length = 1, bytes = 0x01}
+)
+CMD 83 -> rc=0 outSize=1 first4=01000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d540001000000},
+    128
+)
+   -> CMD=84 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 84 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d550001000000},
+    128
+)
+   -> CMD=85 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 85 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d560001000000},
+    128
+)
+   -> CMD=86 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 86 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d570001000000},
+    128
+)
+   -> CMD=87 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 87 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d580001000000},
+    128
+)
+   -> CMD=88 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 88 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d590001000000},
+    128
+)
+   -> CMD=89 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 89 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5a0001000000},
+    128
+)
+   -> CMD=90 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 90 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5b0001000000},
+    128
+)
+   -> CMD=91 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 91 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5c0001000000},
+    128
+)
+   -> CMD=92 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 92 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5d0001000000},
+    128
+)
+   -> CMD=93 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 93 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5e0001000000},
+    128
+)
+   -> CMD=94 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 94 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d5f0001000000},
+    128
+)
+   -> CMD=95 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 95 -> rc=0 outSize=0 first4=00000000
+HOOK sendMessage envelope=(
+    3,
+    0,
+    {length = 8, bytes = 0x424d600001000000},
+    128
+)
+   -> CMD=96 reply length=0
+   -> fabricated reply=(
+    0,
+    {length = 0, bytes = 0x}
+)
+CMD 96 -> rc=0 outSize=0 first4=00000000
+--- ivars of BiometricKitXPCServerMesa: 47 ---
+IVAR _services I offset=280
+IVAR _serviceMatchLock @"NSRecursiveLock" offset=296
+IVAR _enrollmentCount q offset=416
+IVAR _dummyEnrollClient @"BiometricKitXPCExportedClientObject" offset=552
+ivar=0x10df62968 offset=416
